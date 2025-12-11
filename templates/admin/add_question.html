@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><title>Add Question</title></head><body>
+<h1>Add New Question</h1>
+<form method="POST">
+<select name="subject_id" required><option>-- Select Subject --</option>
+{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
+<textarea name="question_text" placeholder="Question" required></textarea>
+<input type="text" name="option_a" placeholder="Option A" required>
+<input type="text" name="option_b" placeholder="Option B" required>
+<input type="text" name="option_c" placeholder="Option C">
+<input type="text" name="option_d" placeholder="Option D">
+<select name="correct_answer" required><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select>
+<input type="text" name="marks" value="1">
+<button type="submit">Add</button>
+</form></body></html>

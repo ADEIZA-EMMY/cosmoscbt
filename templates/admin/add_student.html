@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Add Student</h5>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, msg in messages %}
+                      <div class="alert alert-{{ category }}">{{ msg }}</div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                <form method="post" action="{{ url_for('admin_add_student') }}">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username (unique)</label>
+                        <input id="username" name="username" class="form-control" required placeholder="e.g. 100123">
+                    </div>
+                    <div class="mb-3">
+                        <label for="full_name" class="form-label">Full Name</label>
+                        <input id="full_name" name="full_name" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password (optional)</label>
+                        <input id="password" name="password" class="form-control" placeholder="Leave blank to set username as password">
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <a href="{{ url_for('admin_students') }}" class="btn btn-secondary me-2">Cancel</a>
+                        <button type="submit" class="btn btn-success">Create Student</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>My Exam Results</h2>
+</div>
+
+<div class="card">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0">All Completed Exams</h5>
+    </div>
+    <div class="card-body">
+        {% if exam_sessions %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Exam</th>
+                        <th>Subject</th>
+                        <th>Score</th>
+                        <th>Percentage</th>
+                        <th>Duration</th>
+                        <th>Completed</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in exam_sessions %}
+                    <tr>
+                        <td>{{ session.exam.title }}</td>
+                        <td>{{ session.exam.subject.name }}</td>
+                        <td>
+                            <strong>{{ session.score }}/{{ session.exam.total_marks }}</strong>
+                        </td>
+                        <td>
+                            <span class="badge 
+                                {% if (session.score/session.exam.total_marks)*100 >= 80 %}bg-success
+                                {% elif (session.score/session.exam.total_marks)*100 >= 50 %}bg-warning
+                                {% else %}bg-danger{% endif %}">
+                                {{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%
+                            </span>
+                        </td>
+                        <td>
+                            {% if session.end_time %}
+                                {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} mins
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <a href="{{ url_for('view_result', session_id=session.id) }}" class="btn btn-sm btn-info">
+                                <i class="fas fa-eye me-1"></i>View Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+            <p class="text-muted">You haven't completed any exams yet.</p>
+            <p>Take an exam from the dashboard to see your results here.</p>
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-primary">Go to Dashboard</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

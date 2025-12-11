@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h4 class="mb-0">Preview Generated Questions for {{ subject.name }}</h4>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">Class/Level: {{ class_level or 'unspecified' }}</p>
+
+                <form method="post" action="{{ url_for('commit_generated_questions') }}">
+                    <input type="hidden" name="subject_id" value="{{ subject.id }}">
+                    <input type="hidden" name="preview_json" value='{{ preview_json|tojson|safe }}'>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Question</th>
+                                    <th>Options</th>
+                                    <th>Correct</th>
+                                    <th>Marks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for q in generated %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td>{{ q.question_text }}</td>
+                                    <td>
+                                        A: {{ q.option_a }}<br>
+                                        B: {{ q.option_b }}<br>
+                                        {% if q.option_c %}C: {{ q.option_c }}<br>{% endif %}
+                                        {% if q.option_d %}D: {{ q.option_d }}<br>{% endif %}
+                                        {% if q.option_e %}E: {{ q.option_e }}{% endif %}
+                                    </td>
+                                    <td>{{ q.correct_answer }}</td>
+                                    <td>{{ q.marks or 1 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex justify-content-end mt-3">
+                        <a href="{{ url_for('generate_questions') }}" class="btn btn-secondary me-2">Back</a>
+                        <button type="submit" class="btn btn-success">Save to Database</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

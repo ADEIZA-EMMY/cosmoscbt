@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h3 class="mb-3">Manage Students</h3>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="alert alert-{{ category }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Full Name</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+            <tr>
+                <td>{{ student.id }}</td>
+                <td>{{ student.username }}</td>
+                <td>{{ student.full_name or '' }}</td>
+                <td>{{ student.created_at.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('admin_delete_student', user_id=student.id) }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-between">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        <a href="{{ url_for('admin_add_student') }}" class="btn btn-primary">Add Student</a>
+    </div>
+</div>
+{% endblock %}

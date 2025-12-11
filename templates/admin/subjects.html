@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>Subjects</title></head>
+<body>
+<h1>Subjects</h1>
+<a href="/admin/subject/add">Add New Subject</a>
+<table border="1">
+<tr><th>Subject</th><th>Actions</th></tr>
+{% for subject in subjects %}
+<tr><td>{{ subject.name }}</td><td><a href="#">Edit</a></td></tr>
+{% endfor %}
+</table>
+<a href="/admin/dashboard">Back</a>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Exam Details - {{ exam.title }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Exam: {{ exam.title }}</h1>
+    <p><strong>Subject:</strong> {{ exam.subject.name }}</p>
+    <p><strong>Code:</strong> {{ exam.code or '—' }}</p>
+    <p><strong>Duration:</strong> {{ exam.duration }} minutes</p>
+    <p><strong>Total Marks:</strong> {{ exam.total_marks }}</p>
+    <p><strong>Description:</strong> {{ exam.description or '—' }}</p>
+
+    <h3>Questions ({{ questions|length }})</h3>
+    <ul>
+    {% for q in questions %}
+        <li>{{ loop.index }}. {{ q.question_text }} {% if q.marks %}(<em>{{ q.marks }} mark{% if q.marks>1 %}s{% endif %}</em>){% endif %}</li>
+    {% else %}
+        <li>No questions found for this subject.</li>
+    {% endfor %}
+    </ul>
+
+    <a href="{{ url_for('admin_exams') }}" class="btn btn-secondary">Back to Exams</a>
+</div>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head><title>Exams</title></head><body>
+<h1>Exams</h1>
+<a href="/admin/exam/add">Create New Exam</a>
+<table class="table table-striped">
+	<thead>
+		<tr><th>Title</th><th>Code</th><th>Subject</th><th>Duration</th><th>Actions</th></tr>
+	</thead>
+	<tbody>
+	{% for exam in exams %}
+		<tr>
+			<td>{{ exam.title }}</td>
+			<td>{{ exam.code or '—' }}</td>
+			<td>{{ exam.subject.name }}</td>
+			<td>{{ exam.duration }} min</td>
+			<td>
+				<a href="{{ url_for('admin_view_exam', exam_id=exam.id) }}" class="btn btn-sm btn-primary">View</a>
+				<form method="post" action="{{ url_for('admin_delete_exam', exam_id=exam.id) }}" style="display:inline;" onsubmit="return confirm('Delete this exam and its sessions?');">
+						<button type="submit" class="btn btn-sm btn-danger">Delete</button>
+				</form>
+			</td>
+		</tr>
+	{% endfor %}
+	</tbody>
+</table>
+<a href="/admin/dashboard" class="btn btn-secondary">Back</a>
+</body></html>

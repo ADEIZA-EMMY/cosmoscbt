@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html><head><title>Create Exam</title></head><body>
+<h1>Create New Exam</h1>
+<form method="POST">
+<select name="subject_id" required><option>-- Select Subject --</option>
+{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
+<input type="text" name="title" placeholder="Exam Title" required>
+<textarea name="description" placeholder="Description"></textarea>
+<input type="number" name="duration" placeholder="Duration (minutes)" required>
+<button type="submit">Create</button>
+</form></body></html>

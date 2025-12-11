@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Subjects Management</h2>
+    <a href="{{ url_for('add_subject') }}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>Add Subject
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0">All Subjects</h5>
+    </div>
+    <div class="card-body">
+        {% if subjects %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for subject in subjects %}
+                    <tr>
+                        <td>{{ subject.id }}</td>
+                        <td>{{ subject.name }}</td>
+                        <td>{{ subject.description[:100] }}{% if subject.description|length > 100 %}...{% endif %}</td>
+                        <td>{{ subject.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <a href="{{ url_for('admin_questions', subject_id=subject.id) }}" class="btn btn-sm btn-info">
+                                <i class="fas fa-question-circle"></i> Questions
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-book fa-3x text-muted mb-3"></i>
+            <p class="text-muted">No subjects found. Add your first subject to get started.</p>
+            <a href="{{ url_for('add_subject') }}" class="btn btn-primary">Add Subject</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
