@@ -1,15 +1,69 @@
-<!DOCTYPE html>
-<html>
-<head><title>Subjects</title></head>
-<body>
-<h1>Subjects</h1>
-<a href="/admin/subject/add">Add New Subject</a>
-<table border="1">
-<tr><th>Subject</th><th>Actions</th></tr>
-{% for subject in subjects %}
-<tr><td>{{ subject.name }}</td><td><a href="#">Edit</a></td></tr>
-{% endfor %}
-</table>
-<a href="/admin/dashboard">Back</a>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+	<h3 class="mb-3">Manage Subjects</h3>
+
+	{% with messages = get_flashed_messages(with_categories=true) %}
+	  {% if messages %}
+		{% for category, msg in messages %}
+		  <div class="alert alert-{{ category }}">{{ msg }}</div>
+		{% endfor %}
+	  {% endif %}
+	{% endwith %}
+
+	<table class="table table-striped">
+		<thead>
+			<tr>
+				<th><input type="checkbox" id="select_all_subjects"></th>
+				<th>ID</th>
+				<th>Name</th>
+				<th>Class</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for subject in subjects %}
+			<tr>
+				<td><input type="checkbox" name="selected_subjects" value="{{ subject.id }}" class="subject-checkbox"></td>
+				<td>{{ subject.id }}</td>
+				<td>{{ subject.name }}</td>
+				<td>{{ subject.subject_class or '' }}</td>
+				<td>
+					<a href="{{ url_for('add_subject') }}?edit={{ subject.id }}" class="btn btn-sm btn-secondary">Edit</a>
+				</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+
+	<form id="bulk-delete-subjects" method="post" action="{{ url_for('admin_delete_selected_subjects') }}" onsubmit="return confirm('Delete selected subjects and their questions/exams?');">
+		<input type="hidden" name="ids" id="bulk-subject-ids">
+		<button type="submit" class="btn btn-danger" id="bulk-delete-subjects-btn" disabled>Delete Selected</button>
+	</form>
+
+	<script>
+		const selectAllSubjects = document.getElementById('select_all_subjects');
+		const subjectCheckboxes = document.querySelectorAll('.subject-checkbox');
+		const bulkSubjectsBtn = document.getElementById('bulk-delete-subjects-btn');
+		const bulkSubjectIds = document.getElementById('bulk-subject-ids');
+		function updateSubjectBulk(){
+			const checked = Array.from(subjectCheckboxes).filter(c=>c.checked);
+			bulkSubjectsBtn.disabled = checked.length === 0;
+			bulkSubjectIds.value = checked.map(c=>c.value).join(',');
+		}
+		if(selectAllSubjects){
+			selectAllSubjects.addEventListener('change', ()=>{
+				subjectCheckboxes.forEach(c=> c.checked = selectAllSubjects.checked);
+				updateSubjectBulk();
+			});
+		}
+		subjectCheckboxes.forEach(c=> c.addEventListener('change', updateSubjectBulk));
+	</script>
+
+	<div class="d-flex justify-content-between">
+		<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+		<a href="{{ url_for('add_subject') }}" class="btn btn-primary">Add Subject</a>
+	</div>
+</div>
+{% endblock %}

@@ -60,6 +60,9 @@
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('start') }}">Start Exam</a>
+                    </li>
                     {% if session.user_id %}
                     <li class="nav-item">
                         <span class="navbar-text me-3">Hello, {{ session.full_name }}</span>

@@ -18,10 +18,12 @@ try:
     
     # Test 1: Login
     log("\n1. Testing login...")
+    # include school selection for multi-tenant login (default to school id 1)
     resp = session.post(f"{BASE_URL}/login", data={
-        'username': '100001',
-        'password': '100001',
-        'user_type': 'student'
+        'username': '100002',
+        'password': '100002',
+        'user_type': 'student',
+        'school_id': '1'
     })
     log(f"   Login status: {resp.status_code}")
     log(f"   Final URL: {resp.url}")

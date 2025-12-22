@@ -219,8 +219,14 @@ function submitExam() {
             alert(data.error);
             return;
         }
-        
-        // Redirect to results page
+        // If server returned a post-submit message (temp login cleared), redirect to a submitted page
+        if (data.post_submit_message) {
+            // Redirect to a friendly submitted page which instructs the student to login to view results
+            window.location.href = '/start/submitted/' + data.session_id;
+            return;
+        }
+
+        // Otherwise redirect to results page (logged-in users)
         window.location.href = '/student/results';
     })
     .catch(error => {

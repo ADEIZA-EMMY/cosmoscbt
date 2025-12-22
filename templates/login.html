@@ -120,17 +120,32 @@
             <p>Computer Based Test Platform</p>
         </div>
 
+        {% set _restricted_msg = None %}
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
                     <div class="alert alert-{{ category }}">
                         {{ message }}
                     </div>
+                    {% if category == 'restricted' %}
+                        {% set _restricted_msg = message %}
+                    {% endif %}
                 {% endfor %}
             {% endif %}
         {% endwith %}
 
         <form method="POST">
+            {% if schools %}
+            <div class="form-group">
+                <label for="school_id">School (optional for superadmin)</label>
+                <select id="school_id" name="school_id">
+                    <option value="">-- Select School --</option>
+                    {% for s in schools %}
+                        <option value="{{ s.id }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label for="user_type">Login As</label>
                 <select id="user_type" name="user_type" required>
@@ -167,7 +182,47 @@
 
         <div class="login-footer">
             <p>Don't have an account? <a href="/register">Register here</a></p>
+            <p>
+                <a href="{{ url_for('start_quick') }}" class="btn btn-success mt-2">Start CBT Exam Now</a>
+            </p>
         </div>
     </div>
+    {% if _restricted_msg %}
+    <script>
+        // Show a JS alert as an immediate popup for restricted accounts
+        alert({{ _restricted_msg|tojson }});
+    </script>
+    {% endif %}
+    <script>
+    // Eye icon show/hide password for standalone login template
+    document.addEventListener('DOMContentLoaded', function () {
+        function eyeSVG() { return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; }
+        function eyeOffSVG() { return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.42 21.42 0 0 1 5.06-6.94"></path><path d="M1 1l22 22"></path></svg>'; }
+        try {
+            var input = document.getElementById('password');
+            if (input && !input.dataset.toggleAdded) {
+                var parent = input.parentElement || input.parentNode;
+                if (parent) parent.style.position = parent.style.position || 'relative';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-sm';
+                btn.style.border = 'none';
+                btn.style.background = 'transparent';
+                btn.innerHTML = eyeSVG();
+                btn.setAttribute('aria-label','Show password');
+                btn.style.position = 'absolute'; btn.style.right = '4px'; btn.style.top = '50%'; btn.style.transform = 'translateY(-50%)'; btn.style.padding = '2px'; btn.style.width = '28px'; btn.style.height = '28px'; btn.style.zIndex = 5;
+                // light gray icon color
+                btn.style.color = '#b0b0b0';
+                // darken on hover
+                btn.addEventListener('mouseenter', function(){ btn.style.color = '#666'; });
+                btn.addEventListener('mouseleave', function(){ btn.style.color = '#b0b0b0'; });
+                try { input.style.paddingRight = '36px'; } catch (e) {}
+                btn.addEventListener('click', function () { if (input.type === 'password') { input.type = 'text'; btn.innerHTML = eyeOffSVG(); btn.setAttribute('aria-label','Hide password'); } else { input.type = 'password'; btn.innerHTML = eyeSVG(); btn.setAttribute('aria-label','Show password'); } });
+                parent.appendChild(btn);
+                input.dataset.toggleAdded = '1';
+            }
+        } catch (e) { console.warn('toggle error', e); }
+    });
+    </script>
 </body>
 </html>

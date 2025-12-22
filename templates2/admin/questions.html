@@ -20,17 +20,20 @@
     <div class="card-body">
         <form method="GET" action="{{ url_for('admin_questions') }}">
             <div class="row">
-                <div class="col-md-8">
+                <div class="col-md-6 mb-2">
                     <select class="form-select" name="subject_id">
                         <option value="">All Subjects</option>
                         {% for subject in subjects %}
                         <option value="{{ subject.id }}" {% if selected_subject == subject.id %}selected{% endif %}>
-                            {{ subject.name }}
+                            {{ subject.name }} ({{ subject.code }})
                         </option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-4 mb-2">
+                    <input type="text" name="subject_code" class="form-control" placeholder="Filter by subject code" value="{{ request.args.get('subject_code','') }}">
+                </div>
+                <div class="col-md-2">
                     <button type="submit" class="btn btn-primary w-100">Filter</button>
                 </div>
             </div>
@@ -62,7 +65,7 @@
                     <tr>
                         <td>{{ question.id }}</td>
                         <td>{{ question.question_text[:100] }}{% if question.question_text|length > 100 %}...{% endif %}</td>
-                        <td>{{ question.subject.name }}</td>
+                        <td>{{ question.subject.name }} ({{ question.subject.code }})</td>
                         <td>
                             A: {{ question.option_a[:20] }}<br>
                             B: {{ question.option_b[:20] }}
@@ -123,7 +126,7 @@
                                     
                                     <div class="row mt-3">
                                         <div class="col-md-6">
-                                            <strong>Subject:</strong> {{ question.subject.name }}
+                                            <strong>Subject:</strong> {{ question.subject.name }} ({{ question.subject.code }})
                                         </div>
                                         <div class="col-md-3">
                                             <strong>Marks:</strong> {{ question.marks }}

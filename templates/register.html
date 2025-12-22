@@ -150,6 +150,26 @@
             </div>
 
             <div class="form-group">
+                <label for="school_id">School</label>
+                <select id="school_id" name="school_id" required>
+                    <option value="">Select your school</option>
+                    {% for s in schools %}
+                        <option value="{{ s.id }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="school_code">School Access Code</label>
+                <input
+                    type="text"
+                    id="school_code"
+                    name="school_code"
+                    placeholder="Enter 10-digit school access code"
+                    required
+                >
+            </div>
+            <div class="form-group">
                 <label for="password">Password</label>
                 <input 
                     type="password" 
@@ -167,5 +187,48 @@
             <p>Already have an account? <a href="/login">Login here</a></p>
         </div>
     </div>
+    <script>
+    // Eye icon show/hide password for standalone register template
+    document.addEventListener('DOMContentLoaded', function () {
+        function eyeSVG() { return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; }
+        function eyeOffSVG() { return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.42 21.42 0 0 1 5.06-6.94"></path><path d="M1 1l22 22"></path></svg>'; }
+        try {
+            var input = document.getElementById('password');
+            if (input && !input.dataset.toggleAdded) {
+                var parent = input.parentElement || input.parentNode;
+                if (parent) parent.style.position = parent.style.position || 'relative';
+                var btn = document.createElement('button');
+                btn.type = 'button'; btn.className = 'btn btn-sm btn-outline-secondary';
+                btn.innerHTML = eyeSVG();
+                btn.setAttribute('aria-label','Show password');
+                btn.style.position = 'absolute'; btn.style.right = '8px'; btn.style.top = '50%'; btn.style.transform = 'translateY(-50%)'; btn.style.padding = '4px 6px'; btn.style.zIndex = 5;
+                try { input.style.paddingRight = '60px'; } catch (e) {}
+                btn.addEventListener('click', function () { if (input.type === 'password') { input.type = 'text'; btn.innerHTML = eyeOffSVG(); btn.setAttribute('aria-label','Hide password'); } else { input.type = 'password'; btn.innerHTML = eyeSVG(); btn.setAttribute('aria-label','Show password'); } });
+                parent.appendChild(btn);
+                input.dataset.toggleAdded = '1';
+            }
+            var c = document.getElementById('confirm_password');
+            if (c && !c.dataset.toggleAdded) {
+                var p = c.parentElement || c.parentNode;
+                if (p) p.style.position = p.style.position || 'relative';
+                    var b2 = document.createElement('button');
+                    b2.type = 'button'; b2.className = 'btn btn-sm';
+                    b2.style.border = 'none'; b2.style.background = 'transparent';
+                    b2.innerHTML = eyeSVG();
+                    b2.setAttribute('aria-label','Show confirm password');
+                    b2.style.position = 'absolute'; b2.style.right = '4px'; b2.style.top = '50%'; b2.style.transform = 'translateY(-50%)'; b2.style.padding = '2px'; b2.style.width = '28px'; b2.style.height = '28px'; b2.style.zIndex = 5;
+                    // light gray icon color
+                    b2.style.color = '#b0b0b0';
+                    // darken on hover
+                    b2.addEventListener('mouseenter', function(){ b2.style.color = '#666'; });
+                    b2.addEventListener('mouseleave', function(){ b2.style.color = '#b0b0b0'; });
+                    try { c.style.paddingRight = '36px'; } catch (e) {}
+                    b2.addEventListener('click', function () { if (c.type === 'password') { c.type = 'text'; b2.innerHTML = eyeOffSVG(); b2.setAttribute('aria-label','Hide confirm password'); } else { c.type = 'password'; b2.innerHTML = eyeSVG(); b2.setAttribute('aria-label','Show confirm password'); } });
+                p.appendChild(b2);
+                c.dataset.toggleAdded = '1';
+            }
+        } catch (e) { console.warn('toggle error', e); }
+    });
+    </script>
 </body>
 </html>

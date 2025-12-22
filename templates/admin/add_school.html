@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>Add School</h3>
+    <form method="post">
+        <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" name="name" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Code</label>
+            <input class="form-control" name="code">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">10-digit Access Code (optional)</label>
+            <input class="form-control" name="access_code" placeholder="Leave blank to auto-generate">
+            <div class="form-text">Students must provide this code to register under this school.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Address</label>
+            <input class="form-control" name="address">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Contact Email</label>
+            <input class="form-control" name="contact_email">
+        </div>
+        <button class="btn btn-primary">Add School</button>
+    </form>
+</div>
+{% endblock %}

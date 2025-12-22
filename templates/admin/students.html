@@ -15,9 +15,11 @@
     <table class="table table-striped">
         <thead>
             <tr>
+                <th><input type="checkbox" id="select_all_students"></th>
                 <th>ID</th>
                 <th>Username</th>
                 <th>Full Name</th>
+                <th>Temp Password</th>
                 <th>Created</th>
                 <th>Actions</th>
             </tr>
@@ -25,19 +27,48 @@
         <tbody>
             {% for student in students %}
             <tr>
+                <td><input type="checkbox" name="selected_students" value="{{ student.id }}" class="student-checkbox"></td>
                 <td>{{ student.id }}</td>
                 <td>{{ student.username }}</td>
                 <td>{{ student.full_name or '' }}</td>
+                <td>{{ student.temp_password or '—' }}</td>
                 <td>{{ student.created_at.strftime('%Y-%m-%d') }}</td>
                 <td>
                     <form method="post" action="{{ url_for('admin_delete_student', user_id=student.id) }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');">
                         <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                    <form method="post" action="{{ url_for('admin_reset_student_password', user_id=student.id) }}" style="display:inline; margin-left:6px;" onsubmit="return confirm('Generate and set a new temporary password for this student?');">
+                        <button type="submit" class="btn btn-sm btn-warning">Reset Password</button>
                     </form>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+
+    <form id="bulk-delete-form" method="post" action="{{ url_for('admin_delete_selected_students') }}" onsubmit="return confirm('Delete selected students and all their sessions?');">
+        <input type="hidden" name="user_ids" id="bulk-user-ids">
+        <button type="submit" class="btn btn-danger" id="bulk-delete-btn" disabled>Delete Selected</button>
+    </form>
+
+    <script>
+        const selectAll = document.getElementById('select_all_students');
+        const checkboxes = document.querySelectorAll('.student-checkbox');
+        const bulkBtn = document.getElementById('bulk-delete-btn');
+        const bulkIds = document.getElementById('bulk-user-ids');
+        function updateBulkState(){
+            const checked = Array.from(checkboxes).filter(c=>c.checked);
+            bulkBtn.disabled = checked.length === 0;
+            bulkIds.value = checked.map(c=>c.value).join(',');
+        }
+        if(selectAll){
+            selectAll.addEventListener('change', ()=>{
+                checkboxes.forEach(c=> c.checked = selectAll.checked);
+                updateBulkState();
+            });
+        }
+        checkboxes.forEach(c=> c.addEventListener('change', updateBulkState));
+    </script>
 
     <div class="d-flex justify-content-between">
         <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>

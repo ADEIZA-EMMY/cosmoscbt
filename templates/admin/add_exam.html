@@ -2,10 +2,58 @@
 <html><head><title>Create Exam</title></head><body>
 <h1>Create New Exam</h1>
 <form method="POST">
-<select name="subject_id" required><option>-- Select Subject --</option>
-{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
-<input type="text" name="title" placeholder="Exam Title" required>
-<textarea name="description" placeholder="Description"></textarea>
-<input type="number" name="duration" placeholder="Duration (minutes)" required>
-<button type="submit">Create</button>
-</form></body></html>
+	<div>
+		<label>Subject</label>
+		<select name="subject_id" required>
+			<option value="">-- Select Subject --</option>
+			{% for s in subjects %}
+				<option value="{{ s.id }}" data-class="{{ s.subject_class or '' }}">{{ s.name }}</option>
+			{% endfor %}
+		</select>
+	</div>
+	<div>
+		<label>Class (optional)</label>
+		<select name="subject_class" id="subject_class">
+			<option value="">(any)</option>
+			{% if classes %}
+				{% for cls in classes %}
+					<option value="{{ cls }}">{{ cls }}</option>
+				{% endfor %}
+			{% endif %}
+		</select>
+	</div>
+	<div>
+		<label>Title</label>
+		<input type="text" name="title" placeholder="Exam Title" required>
+	</div>
+	<div>
+		<label>Description</label>
+		<textarea name="description" placeholder="Description"></textarea>
+	</div>
+	<div>
+		<label>Duration (minutes)</label>
+		<input type="number" name="duration" placeholder="Duration (minutes)" required>
+	</div>
+	<div>
+		<button type="submit">Create</button>
+	</div>
+</form>
+
+<script>
+// Auto-select class when subject chosen
+(function(){
+	const subj = document.querySelector('select[name="subject_id"]');
+	const cls = document.getElementById('subject_class');
+	if(!subj || !cls) return;
+	subj.addEventListener('change', function(){
+		const opt = subj.options[subj.selectedIndex];
+		const c = opt ? opt.getAttribute('data-class') : '';
+		if(!c) return;
+		for(let i=0;i<cls.options.length;i++){
+			if(cls.options[i].value === c){ cls.selectedIndex = i; return; }
+		}
+		const newOpt = document.createElement('option'); newOpt.value = c; newOpt.text = c; newOpt.selected = true; cls.appendChild(newOpt);
+	});
+})();
+</script>
+</body></html>

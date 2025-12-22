@@ -33,3 +33,82 @@ body {
     border: 1px solid #e0e0e0;
     border-radius: 5px;
 }
+
+/* Navbar tweaks */
+.navbar-custom {
+    background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+}
+.navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* Card and container styling */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+.card-header {
+    background: transparent;
+    border-bottom: none;
+}
+
+/* Tables and lists */
+.table thead th {
+    background: linear-gradient(90deg, #eef2ff, #ecfeff);
+    font-weight: 600;
+}
+.list-group-item {
+    border: none;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 6px rgba(15,23,42,0.04);
+}
+
+/* Question card styles */
+.question-card {
+    padding: 14px;
+    border-radius: 10px;
+    background: #ffffff;
+}
+.question-card .fw-bold {
+    font-size: 1rem;
+}
+.question-actions .btn {
+    min-width: 68px;
+}
+
+/* Buttons */
+.btn-success {
+    background-color: #10b981;
+    border-color: #10b981;
+}
+.btn-danger {
+    background-color: #ef4444;
+    border-color: #ef4444;
+}
+
+/* File upload area */
+.upload-dropzone {
+    border: 2px dashed #e6eef7;
+    padding: 18px;
+    border-radius: 8px;
+    text-align: center;
+    background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+}
+
+/* Badges and misc */
+.badge {
+    font-size: 0.85em;
+}
+
+/* Responsive tweaks */
+@media (max-width: 768px) {
+    .question-card { padding: 10px; }
+    .navbar-brand { font-size: 1rem; }
+}
+
+/* Helpful utility spacing */
+.mb-1 { margin-bottom: .25rem !important; }
+.me-2 { margin-right: .5rem !important; }

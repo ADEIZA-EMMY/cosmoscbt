@@ -1,61 +1,122 @@
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="utf-8">
-	<title>Manage Questions</title>
-	<link rel="stylesheet" href="/static/css/style.css">
-	<style>
-		table { width: 100%; border-collapse: collapse; }
-		th, td { padding: 8px; border: 1px solid #ddd; }
-		.actions { white-space: nowrap; }
-	</style>
-}</head>
-<body>
+{% extends "base.html" %}
+
+{% block content %}
 <div class="container">
-	<h1>Questions</h1>
-	<div class="d-flex justify-content-between mb-3">
+	<div class="d-flex justify-content-between align-items-center mb-3">
 		<div>
-			<a href="/admin/question/add" class="btn btn-primary">Add Question</a>
-			<a href="/admin/question/upload" class="btn btn-success">Upload from Excel</a>
+			<h3 class="mb-0">Manage Questions</h3>
+			<small class="text-muted">Total questions: {{ questions|length }}</small>
 		</div>
 		<div>
-			<form method="post" action="{{ url_for('admin_delete_all_questions') }}" onsubmit="return confirm('Delete ALL questions? This cannot be undone.');" style="display:inline;">
-				<button type="submit" class="btn btn-danger">Delete All Questions</button>
+			<a href="{{ url_for('add_question') }}" class="btn btn-primary">Add Question</a>
+			<a href="{{ url_for('upload_questions') }}" class="btn btn-success">Upload from Excel</a>
+		</div>
+	</div>
+
+	{% with messages = get_flashed_messages(with_categories=true) %}
+	  {% if messages %}
+		{% for category, msg in messages %}
+		  <div class="alert alert-{{ category }}">{{ msg }}</div>
+		{% endfor %}
+	  {% endif %}
+	{% endwith %}
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<form method="GET" action="{{ url_for('admin_questions') }}" class="row g-2 align-items-center">
+				<div class="col-auto">
+					<input list="subjectCodes" name="subject_code" class="form-control" placeholder="Subject code (e.g. MAT)" value="{{ request.args.get('subject_code','') }}">
+					<datalist id="subjectCodes">
+						{% for subject in subjects %}
+						<option value="{{ subject.code }}">{{ subject.name }}</option>
+						{% endfor %}
+					</datalist>
+				</div>
+				<div class="col-auto">
+					<input list="subjectClasses" name="subject_class" class="form-control" placeholder="Class (e.g. SS2)" value="{{ request.args.get('subject_class','') }}">
+					<datalist id="subjectClasses">
+						{% for subject in subjects %}
+							{% if subject.subject_class %}
+							<option value="{{ subject.subject_class }}">{{ subject.name }}</option>
+							{% endif %}
+						{% endfor %}
+					</datalist>
+				</div>
+				<div class="col-auto">
+					<button type="submit" class="btn btn-outline-primary">Filter</button>
+				</div>
+				<div class="col text-end">
+					<form method="post" action="{{ url_for('admin_delete_all_questions') }}" onsubmit="return confirm('Delete ALL questions? This cannot be undone.');" style="display:inline;">
+						<button type="submit" class="btn btn-danger">Delete All</button>
+					</form>
+				</div>
 			</form>
 		</div>
 	</div>
 
-	<table class="table table-striped">
-		<thead>
-			<tr>
-				<th>#</th>
-				<th>Question</th>
-				<th>Subject</th>
-				<th>Marks</th>
-				<th>Actions</th>
-			</tr>
-		</thead>
-		<tbody>
-		{% for q in questions %}
-			<tr>
-				<td>{{ loop.index }}</td>
-				<td>{{ q.question_text[:120] }}</td>
-				<td>{{ q.subject.name }}</td>
-				<td>{{ q.marks or 1 }}</td>
-				<td class="actions">
-					<a href="/admin/question/add?edit={{ q.id }}" class="btn btn-sm btn-secondary">Edit</a>
-					<form method="post" action="{{ url_for('admin_delete_question', question_id=q.id) }}" style="display:inline;" onsubmit="return confirm('Delete this question? This will remove it from any past sessions.');">
-						<button type="submit" class="btn btn-sm btn-danger">Delete</button>
-					</form>
-				</td>
-			</tr>
-		{% else %}
-			<tr><td colspan="5">No questions found.</td></tr>
-		{% endfor %}
-		</tbody>
-	</table>
+	<div class="table-responsive">
+		<table class="table table-hover align-middle">
+			<thead class="table-light">
+				<tr>
+					<th style="width:36px"><input type="checkbox" id="select_all_questions"></th>
+					<th>Question</th>
+					<th style="width:160px">Subject</th>
+					<th style="width:120px">Class</th>
+					<th style="width:80px">Marks</th>
+					<th style="width:160px">Created</th>
+					<th style="width:180px">Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				{% for q in questions %}
+				<tr>
+					<td><input type="checkbox" class="question-checkbox" name="selected_questions" value="{{ q.id }}"></td>
+					<td title="{{ q.question_text|e }}"><strong>{{ q.question_text|truncate(140, True, '...') }}</strong>
+						<div class="text-muted small mt-1">{{ (q.explanation or '')|truncate(120, True, '...') }}</div>
+					</td>
+					<td>{{ q.subject.name }} <small class="text-muted">({{ q.subject.code or '—' }})</small></td>
+					<td>{{ q.subject_class or q.subject.subject_class or '—' }}</td>
+					<td>{{ q.marks or 1 }}</td>
+					<td>{{ q.created_at.strftime('%Y-%m-%d') if q.created_at else '—' }}</td>
+					<td>
+						<a class="btn btn-sm btn-secondary" href="{{ url_for('add_question') }}?edit={{ q.id }}">Edit</a>
+						<form method="post" action="{{ url_for('admin_delete_question', question_id=q.id) }}" style="display:inline;">
+							<button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this question?');">Delete</button>
+						</form>
+					</td>
+				</tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</div>
 
-	<a href="/admin/dashboard" class="btn btn-secondary">Back</a>
+	<div class="d-flex justify-content-between align-items-center mt-3">
+		<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back</a>
+		<form id="bulk-delete-questions" method="post" action="{{ url_for('admin_delete_selected_questions') }}" onsubmit="return confirm('Delete selected questions?');">
+			<input type="hidden" name="ids" id="bulk-question-ids">
+			<button type="submit" class="btn btn-danger" id="bulk-delete-questions-btn" disabled>Delete Selected Questions</button>
+		</form>
+	</div>
+
+	<script>
+		const selectAll = document.getElementById('select_all_questions');
+		const questionCheckboxes = document.querySelectorAll('.question-checkbox');
+		const bulkQuestionsBtn = document.getElementById('bulk-delete-questions-btn');
+		const bulkQuestionIds = document.getElementById('bulk-question-ids');
+
+		function updateQuestionBulk(){
+			const checked = Array.from(questionCheckboxes).filter(c=>c.checked);
+			bulkQuestionsBtn.disabled = checked.length === 0;
+			bulkQuestionIds.value = checked.map(c=>c.value).join(',');
+		}
+
+		if(selectAll){
+			selectAll.addEventListener('change', ()=>{
+				questionCheckboxes.forEach(c=> c.checked = selectAll.checked);
+				updateQuestionBulk();
+			});
+		}
+		questionCheckboxes.forEach(c=> c.addEventListener('change', updateQuestionBulk));
+	</script>
 </div>
-</body>
-</html>
+{% endblock %}

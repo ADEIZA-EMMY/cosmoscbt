@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3>Superadmin — Admin Accounts (6869)</h3>
+  <p>Only accessible to superadmin users.</p>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Full Name</th>
+        <th>Restricted</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in admins %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.username }}</td>
+        <td>{{ a.full_name or '' }}</td>
+        <td>{{ 'Yes' if a.is_restricted else 'No' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('super_toggle_restrict', user_id=a.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-{{ 'success' if a.is_restricted else 'danger' }}">{{ 'Unrestrict' if a.is_restricted else 'Restrict' }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="mt-3">
+    <a class="btn btn-outline-secondary" href="{{ url_for('superadmin_change_password') }}">Change Your Password</a>
+    <a class="btn btn-outline-dark ms-2" href="{{ url_for('superadmin_logout') }}">Logout</a>
+  </div>
+</div>
+{% endblock %}

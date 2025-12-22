@@ -2,16 +2,28 @@
 
 1. Testing login...
    Login status: 200
-   Final URL: http://127.0.0.1:5000/student/dashboard
+   Final URL: http://127.0.0.1:5000/login
 
 2. Testing exam endpoint...
    Exam status: 200
-   Final URL: http://127.0.0.1:5000/student/exam/1
-   ✓ examSessionId found in response
-   ✓ Extracted session_id: 7
-
-3. Testing question fetch (session 7)...
-   Response: {'question': {'id': 122, 'marks': 1, 'options': [{'letter': 'A', 'text': 'Kindess'}, {'letter': 'B', 'text': 'payment of fines and death'}, {'letter': 'C', 'text': 'egalitarial'}, {'letter': 'E', 'text': 'Non of th above'}], 'selected_answer': None, 'text': 'The following are punishment for drug traffickers'}, 'question_index': 0, 'total_questions': 155}
-   ✓ SUCCESS: Got 155 questions
+   Final URL: http://127.0.0.1:5000/login
+   ✗ examSessionId NOT in response
+   Response text (first 500 chars): <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CBT System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        
 
 === TEST COMPLETE ===

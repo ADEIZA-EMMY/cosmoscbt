@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Manage Access Codes for: {{ exam.title }}</h2>
+    <p><strong>Exam Code:</strong> {{ exam.code or '—' }}</p>
+
+    <form method="post" class="mb-3">
+        <input type="hidden" name="action" value="generate_all">
+        <button class="btn btn-primary" type="submit">Generate codes for all students</button>
+        <a href="{{ url_for('admin_exams') }}" class="btn btn-secondary">Back to Exams</a>
+        <a href="{{ url_for('admin_exam_codes_export', exam_id=exam.id) }}" class="btn btn-outline-primary ms-2">Export CSV</a>
+    </form>
+
+    <h4>Generated Codes</h4>
+    {% if codes %}
+    <table class="table table-striped">
+        <thead>
+            <tr><th>Student</th><th>Username</th><th>Code</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+        {% for c in codes %}
+            <tr>
+                <td>{{ c.student.full_name or '—' }}</td>
+                <td>{{ c.student.username }}</td>
+                <td><strong>{{ c.code }}</strong></td>
+                <td>{{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    <form method="post" style="display:inline;">
+                        <input type="hidden" name="action" value="delete_code">
+                        <input type="hidden" name="code_id" value="{{ c.id }}">
+                        <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('Delete this code?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p>No access codes generated yet for this exam.</p>
+    {% endif %}
+</div>
+{% endblock %}

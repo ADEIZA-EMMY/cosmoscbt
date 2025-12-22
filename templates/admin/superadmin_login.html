@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3>Superadmin Login</h3>
+  <p>Enter your superadmin credentials to access this area.</p>
+  <form method="post" action="{{ url_for('superadmin_login') }}">
+    <div class="mb-2">
+      <label>Username</label>
+      <input class="form-control" name="username" required>
+    </div>
+    <div class="mb-2">
+      <label>Password</label>
+      <input type="password" class="form-control" name="password" required>
+    </div>
+    <button class="btn btn-primary">Authenticate</button>
+  </form>
+</div>
+{% endblock %}

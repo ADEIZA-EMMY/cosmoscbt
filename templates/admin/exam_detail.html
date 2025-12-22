@@ -9,9 +9,22 @@
 <div class="container">
     <h1>Exam: {{ exam.title }}</h1>
     <p><strong>Subject:</strong> {{ exam.subject.name }}</p>
+    <p><strong>Class:</strong> {{ exam.subject_class or exam.subject.subject_class or '—' }}</p>
     <p><strong>Code:</strong> {{ exam.code or '—' }}</p>
     <p><strong>Duration:</strong> {{ exam.duration }} minutes</p>
     <p><strong>Total Marks:</strong> {{ exam.total_marks }}</p>
+    <form method="post" action="{{ url_for('admin_toggle_quick', exam_id=exam.id) }}" style="display:inline;">
+        <button type="submit" class="btn btn-sm btn-outline-{{ 'success' if exam.allow_quick_start else 'secondary' }}">
+            {{ 'Disable Quick Start' if exam.allow_quick_start else 'Enable Quick Start' }}
+        </button>
+        </form>
+    <form method="post" action="{{ url_for('admin_toggle_auto_start', exam_id=exam.id) }}" style="display:inline; margin-left:8px;">
+        <button type="submit" class="btn btn-sm btn-outline-{{ 'success' if exam.auto_start_on_code else 'secondary' }}">
+            {{ 'Disable Auto-Start' if exam.auto_start_on_code else 'Enable Auto-Start' }}
+        </button>
+        <a href="{{ url_for('admin_exam_codes', exam_id=exam.id) }}" class="btn btn-sm btn-secondary ms-2">Manage Codes</a>
+        <a href="{{ url_for('admin_exam_codes_export', exam_id=exam.id) }}" class="btn btn-sm btn-outline-primary ms-2">Export Codes</a>
+    </form>
     <p><strong>Description:</strong> {{ exam.description or '—' }}</p>
 
     <h3>Questions ({{ questions|length }})</h3>

@@ -46,16 +46,27 @@
 
                 <form method="POST" action="{{ url_for('upload_questions') }}" enctype="multipart/form-data">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="subject_id" class="form-label">Subject</label>
                             <select class="form-select" id="subject_id" name="subject_id" required>
                                 <option value="">Select Subject</option>
                                 {% for subject in subjects %}
-                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                                <option value="{{ subject.id }}" data-class="{{ subject.subject_class or '' }}">{{ subject.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
+                            <label for="subject_class" class="form-label">Class</label>
+                            <select class="form-select" id="subject_class" name="subject_class">
+                                <option value="">(no class)</option>
+                                {% if classes %}
+                                    {% for cls in classes %}
+                                        <option value="{{ cls }}">{{ cls }}</option>
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
                             <label for="file" class="form-label">Excel File</label>
                             <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
                             <div class="form-text">Only .xlsx and .xls files are allowed</div>
@@ -67,6 +78,29 @@
                         <button type="submit" class="btn btn-success">Upload Questions</button>
                     </div>
                 </form>
+                <script>
+                    // Auto-select subject_class when a subject is chosen
+                    (function(){
+                        const subjSelect = document.getElementById('subject_id');
+                        const classSelect = document.getElementById('subject_class');
+                        if(!subjSelect || !classSelect) return;
+                        subjSelect.addEventListener('change', function(){
+                            const opt = subjSelect.options[subjSelect.selectedIndex];
+                            const cls = opt ? opt.getAttribute('data-class') : '';
+                            if(!cls) return;
+                            // try to find matching option in classSelect
+                            for(let i=0;i<classSelect.options.length;i++){
+                                if(classSelect.options[i].value === cls){
+                                    classSelect.selectedIndex = i; return;
+                                }
+                            }
+                            // if not found, add it as an option and select
+                            const newOpt = document.createElement('option');
+                            newOpt.value = cls; newOpt.text = cls; newOpt.selected = true;
+                            classSelect.appendChild(newOpt);
+                        });
+                    })();
+                </script>
             </div>
         </div>
     </div>

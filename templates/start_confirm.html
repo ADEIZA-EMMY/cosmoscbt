@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+  <div class="card">
+    <div class="card-header">
+      <h3>Confirm Start Exam</h3>
+    </div>
+    <div class="card-body">
+      <p><strong>Exam:</strong> {{ exam.title }}</p>
+      <p><strong>Description:</strong> {{ exam.description or 'No description' }}</p>
+      <p><strong>Duration:</strong> {{ exam.duration }} minutes</p>
+      {% if student_name %}
+        <p><strong>Student:</strong> {{ student_name }}</p>
+        <p>Please confirm that the above name is yours before starting the exam.</p>
+      {% endif %}
+      <p class="text-warning">Please confirm you are ready to begin. Once you start the exam the timer will begin and you will not be able to pause.</p>
+
+      <form method="POST" action="{{ action }}">
+        <input type="hidden" name="username_or_code" value="{{ username_or_code }}">
+        <input type="hidden" name="exam_code" value="{{ exam_code }}">
+        {% if access_code is defined %}
+          <input type="hidden" name="access_code" value="{{ access_code }}">
+        {% endif %}
+
+        <button class="btn btn-primary">Begin Exam</button>
+        <a href="/start" class="btn btn-secondary">Cancel</a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

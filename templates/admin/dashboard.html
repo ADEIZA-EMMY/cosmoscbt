@@ -8,7 +8,22 @@
         <!-- Main content -->
         <main class="col-12">
             <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Dashboard</h1>
+                <div>
+                    <h1 class="h2">Dashboard</h1>
+                    <div class="d-flex align-items-center">
+                        {% if school %}
+                            <small class="text-muted mr-3">School: <strong>{{ school.name }}</strong></small>
+                        {% endif %}
+                        <form method="post" action="/set_school" class="mb-0">
+                            <select name="school_id" onchange="this.form.submit()" class="form-control form-control-sm">
+                                <option value="">-- Select School --</option>
+                                {% for s in schools %}
+                                    <option value="{{ s.id }}" {% if school and s.id == school.id %}selected{% endif %}>{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </div>
+                </div>
             </div>
 
             <!-- Stats cards -->
@@ -70,6 +85,7 @@
                                         Manage Students
                                     </a>
                                 </div>
+                                {# Manage Schools moved to superadmin dashboard #}
                                 <div class="col-md-3 mb-3">
                                     <a href="/admin/question/upload" class="btn btn-success w-100">
                                         Upload Questions

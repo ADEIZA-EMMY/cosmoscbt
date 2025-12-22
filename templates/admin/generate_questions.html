@@ -33,6 +33,12 @@
                     </div>
 
                     <div class="mb-3">
+                        <label for="topics" class="form-label">Focus Topics (optional)</label>
+                        <textarea id="topics" name="topics" class="form-control" rows="3" placeholder="Enter comma or newline separated topics for the AI to focus on, e.g., Fractions, Algebra: linear equations"></textarea>
+                        <div class="form-text">Provide topics to guide the AI. Leave empty for general coverage.</div>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="total_questions" class="form-label">Total Questions</label>
                         <input id="total_questions" name="total_questions" type="number" min="1" max="200" value="10" class="form-control" required>
                     </div>
