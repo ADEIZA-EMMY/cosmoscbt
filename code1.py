@@ -2446,8 +2446,6 @@ def admin_unlock_student_exam(exam_id, student_id):
 
     flash(f'Unlocked exam for {student.username}. Removed {removed} completed session(s).', 'success')
     return redirect(url_for('admin_view_exam', exam_id=exam.id))
-    flash(f'Quick start {'enabled' if exam.allow_quick_start else 'disabled'} for exam "{exam.title}"', 'success')
-    return redirect(url_for('admin_view_exam', exam_id=exam.id))
 
 
 @app.route('/admin/exam/<int:exam_id>/delete', methods=['POST'])
