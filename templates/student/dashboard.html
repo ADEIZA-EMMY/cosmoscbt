@@ -10,6 +10,11 @@
             {% if school %}
                 <small class="text-muted mr-3">School: <strong>{{ school.name }}</strong></small>
             {% endif %}
+            {% if passport_url %}
+            <div class="ms-3">
+                <img src="{{ passport_url }}" alt="Avatar" class="rounded-circle" style="width:64px;height:64px;object-fit:cover;border:2px solid #fff;"/>
+            </div>
+            {% endif %}
             <form method="post" action="/set_school" class="mb-0">
                 <select name="school_id" onchange="this.form.submit()" class="form-control form-control-sm">
                     <option value="">-- Select School --</option>

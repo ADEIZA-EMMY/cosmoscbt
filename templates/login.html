@@ -111,6 +111,9 @@
         .login-footer a:hover {
             text-decoration: underline;
         }
+        .contact-links { display:flex; gap:12px; align-items:center; justify-content:center; margin-top:12px; }
+        .contact-links a { color:#333; text-decoration:none; display:inline-flex; gap:8px; align-items:center; }
+        .contact-links svg { width:20px; height:20px; display:block; }
     </style>
 </head>
 <body>
@@ -185,6 +188,19 @@
             <p>
                 <a href="{{ url_for('start_quick') }}" class="btn btn-success mt-2">Start CBT Exam Now</a>
             </p>
+            <div class="contact-links">
+                <span style="font-weight:600;margin-right:6px;">reach us @</span>
+                <a href="https://wa.me/09050714216" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp">
+                    <!-- WhatsApp SVG -->
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#25D366" aria-hidden="true"><path d="M20.52 3.48A11.87 11.87 0 0012 0C5.37 0 .01 5.36.01 12c0 2.11.55 4.09 1.6 5.86L0 24l6.5-1.63A11.94 11.94 0 0012 24c6.63 0 12-5.36 12-12 0-3.2-1.25-6.2-3.48-8.52zM12 22.2c-1.7 0-3.36-.45-4.8-1.3l-.34-.2-3.86.96.98-3.76-.22-.35A9.03 9.03 0 012.9 12c0-4.98 4.06-9.04 9.1-9.04 2.43 0 4.71.95 6.43 2.67A8.99 8.99 0 0121 12c0 5-4.06 9.2-9 9.2z"/></svg>
+                    <span>09050714216</span>
+                </a>
+                <a href="https://www.facebook.com/100008982790228/videos/4129560197321820/?app=fbl" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+                    <!-- Facebook SVG -->
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#1877F2" aria-hidden="true"><path d="M22 12.07C22 6.48 17.52 2 11.93 2S2 6.48 2 12.07c0 4.98 3.66 9.11 8.44 9.93v-7.03H8.08v-2.9h2.36V9.41c0-2.33 1.39-3.61 3.52-3.61.99 0 2.03.18 2.03.18v2.23h-1.14c-1.12 0-1.47.7-1.47 1.42v1.7h2.5l-.4 2.9h-2.1v7.03C18.34 21.18 22 17.05 22 12.07z"/></svg>
+                    <span>Facebook</span>
+                </a>
+            </div>
         </div>
     </div>
     {% if _restricted_msg %}

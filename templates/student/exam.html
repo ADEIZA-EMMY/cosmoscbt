@@ -72,12 +72,68 @@
     </div>
 </div>
 
+<!-- Pre-start Modal (request fullscreen and camera) -->
+<div class="modal fade" id="preStartModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">About to start exam (Fullscreen)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>You are about to start the exam in full-screen mode. Do not exit the full-screen until you submit. Use "Previous" and "Next" to navigate questions. The exam is time-sensitive and will be auto-submitted when time expires.</p>
+                <p>The app will request permission to access your device camera to record the exam for integrity monitoring. Recording will be uploaded after submission.</p>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="allowCamera" checked>
+                    <label class="form-check-label" for="allowCamera">Allow camera recording</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="startExamBtn">Start Exam (Enter Fullscreen)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Simple calculator overlay -->
+<div id="calcOverlay" style="display:none;position:fixed;right:20px;bottom:20px;z-index:2000;width:260px;background:#fff;border:1px solid #ccc;padding:10px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <strong>Calculator</strong>
+        <button class="btn btn-sm btn-outline-secondary" id="closeCalc">X</button>
+    </div>
+    <input id="calcDisplay" class="form-control mb-2" readonly style="height:38px;font-size:18px;text-align:right;" />
+    <div class="d-grid" style="grid-template-columns:repeat(4,1fr);display:grid;gap:6px;">
+        <button class="btn btn-light calc-btn">7</button>
+        <button class="btn btn-light calc-btn">8</button>
+        <button class="btn btn-light calc-btn">9</button>
+        <button class="btn btn-warning calc-op">/</button>
+        <button class="btn btn-light calc-btn">4</button>
+        <button class="btn btn-light calc-btn">5</button>
+        <button class="btn btn-light calc-btn">6</button>
+        <button class="btn btn-warning calc-op">*</button>
+        <button class="btn btn-light calc-btn">1</button>
+        <button class="btn btn-light calc-btn">2</button>
+        <button class="btn btn-light calc-btn">3</button>
+        <button class="btn btn-warning calc-op">-</button>
+        <button class="btn btn-light calc-btn">0</button>
+        <button class="btn btn-light calc-btn">.</button>
+        <button class="btn btn-success" id="calcEq">=</button>
+        <button class="btn btn-warning calc-op">+</button>
+    </div>
+</div>
+
+<button id="toggleCalc" class="btn btn-outline-secondary" style="position:fixed;right:20px;bottom:300px;z-index:2000;">Calculator</button>
+
 <script>
 const examSessionId = {{ session_id }};
 const examDuration = {{ exam.duration }};
 let currentQuestionIndex = 0;
 let totalQuestions = 0;
 let timerInterval = null;
+let mediaStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
 
 // Start the exam timer
 function startTimer() {
@@ -155,6 +211,22 @@ function loadQuestion(index) {
 function renderQuestion(question) {
     const container = document.getElementById('exam-container');
     
+    // If theory question, show long text area instead of options
+    if (question.is_theory) {
+        container.innerHTML = `
+            <div class="question-container">
+                <h5>Question ${currentQuestionIndex + 1} (${question.marks} mark${question.marks > 1 ? 's' : ''})</h5>
+                <div class="card mb-4"><div class="card-body"><p class="card-text">${question.text}</p></div></div>
+                <h6>Your answer (long-form):</h6>
+                <textarea id="theory-answer" class="form-control" rows="8"></textarea>
+            </div>
+        `;
+        document.getElementById('theory-answer').addEventListener('blur', () => {
+            saveAnswer(document.getElementById('theory-answer').value);
+        });
+        return;
+    }
+    
     let optionsHtml = question.options.map(option => `
         <div class="form-check mb-2">
             <input class="form-check-input" type="radio" name="answer" 
@@ -207,9 +279,28 @@ function saveAnswer(answer) {
 }
 
 // Submit the exam
-function submitExam() {
+async function submitExam() {
     clearInterval(timerInterval);
-    
+    // Stop media recorder if running
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        // Wait a short moment for dataavailable events
+        await new Promise(r => setTimeout(r, 500));
+        if (recordedChunks.length) {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const fd = new FormData();
+            const filename = `exam_${examSessionId}_recording_${Date.now()}.webm`;
+            fd.append('recording', blob, filename);
+            try {
+                await fetch(`/student/upload_recording/${examSessionId}`, { method: 'POST', body: fd });
+            } catch (e) { console.warn('Recording upload failed', e); }
+        }
+        // stop tracks
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+        }
+    }
+
     fetch(`/api/exam/${examSessionId}/submit`, {
         method: 'POST'
     })
@@ -235,14 +326,12 @@ function submitExam() {
     });
 }
 
-// Initialize the exam
+// Initialize the exam: show pre-start modal and setup handlers
 document.addEventListener('DOMContentLoaded', function() {
-    // Load the first question
-    loadQuestion(0);
-    
-    // Start the timer
-    startTimer();
-    
+    // Show pre-start instructions modal instead of auto-starting
+    const preModalEl = new bootstrap.Modal(document.getElementById('preStartModal'));
+    preModalEl.show();
+
     // Set up navigation
     document.getElementById('prev-btn').addEventListener('click', () => {
         if (currentQuestionIndex > 0) {
@@ -258,6 +347,34 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Set up submit confirmation
     document.getElementById('confirm-submit').addEventListener('click', submitExam);
+
+    // Pre-start modal behaviours
+    document.getElementById('startExamBtn').addEventListener('click', async () => {
+        const allowCam = document.getElementById('allowCamera').checked;
+        // Request fullscreen
+        try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); } catch (e) {}
+        // Start camera recording if allowed
+        if (allowCam && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                recordedChunks = [];
+                mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'video/webm;codecs=vp9' });
+                mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
+                mediaRecorder.start(1000);
+            } catch (e) { console.warn('Camera not available', e); }
+        }
+        const preModal = bootstrap.Modal.getInstance(document.getElementById('preStartModal'));
+        preModal.hide();
+        loadQuestion(0);
+        startTimer();
+    });
+
+    // Calculator UI
+    const toggleCalc = document.getElementById('toggleCalc');
+    if (toggleCalc) toggleCalc.addEventListener('click', () => { const el = document.getElementById('calcOverlay'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; });
+    document.querySelectorAll('.calc-btn').forEach(b => b.addEventListener('click', () => { document.getElementById('calcDisplay').value += b.textContent; }));
+    document.querySelectorAll('.calc-op').forEach(b => b.addEventListener('click', () => { document.getElementById('calcDisplay').value += b.textContent; }));
+    document.getElementById('calcEq').addEventListener('click', () => { try { const res = eval(document.getElementById('calcDisplay').value || '0'); document.getElementById('calcDisplay').value = String(res); } catch (e) { document.getElementById('calcDisplay').value = 'ERR'; } });
 });
 </script>
 {% endblock %}

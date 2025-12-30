@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+  <h3>Manage Classes</h3>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="mb-4">
+    <form method="post" action="{{ url_for('admin_add_class') }}" class="row g-2">
+      <div class="col-auto">
+        <input name="name" class="form-control" placeholder="New class name (e.g. SS2)" required>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary">Add Class</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="mb-4">
+    <div class="d-flex gap-2 align-items-center">
+      <a href="{{ url_for('admin_export_classes') }}" class="btn btn-outline-success">Export Classes (CSV)</a>
+      <a href="{{ url_for('admin_export_classes_xlsx') }}" class="btn btn-outline-success">Export Classes (XLSX)</a>
+      <form method="post" action="{{ url_for('admin_import_classes') }}" enctype="multipart/form-data" style="display:inline-block;">
+        <input type="file" name="file" accept="text/csv" required>
+        <button class="btn btn-outline-primary">Import CSV</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_import_classes_xlsx') }}" enctype="multipart/form-data" style="display:inline-block;">
+        <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+        <button class="btn btn-outline-primary">Import XLSX</button>
+      </form>
+    </div>
+    <small class="text-muted">CSV/XLSX columns: <code>name</code> [, <code>school</code>]. 'school' may be school name or code.</small>
+  </div>
+
+  <table class="table table-striped">
+    <thead><tr><th>ID</th><th>Name</th><th>School</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for c in classes %}
+        <tr>
+          <td><input type="checkbox" class="class-checkbox" value="{{ c.id }}"></td>
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.school.name if c.school else 'Global' }}</td>
+          <td>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '' }}</td>
+          <td>
+            <a href="{{ url_for('admin_edit_class', class_id=c.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+            <form method="post" action="{{ url_for('admin_delete_class', class_id=c.id) }}" style="display:inline;" onsubmit="return confirm('Delete class?');">
+              <button class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <form id="bulk-delete-form" method="post" action="{{ url_for('admin_delete_selected_classes') }}" onsubmit="return confirm('Delete selected classes?');">
+    <input type="hidden" name="ids" id="bulk-class-ids">
+    <button id="bulk-delete-classes" class="btn btn-danger" disabled>Delete Selected</button>
+  </form>
+
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back</a>
+</div>
+<script>
+  (function(){
+    const bulkBtn = document.getElementById('bulk-delete-classes');
+    const bulkIds = document.getElementById('bulk-class-ids');
+    function update(){
+      const checked = Array.from(document.querySelectorAll('.class-checkbox')).filter(c=>c.checked).map(c=>c.value);
+      bulkIds.value = checked.join(',');
+      bulkBtn.disabled = checked.length === 0;
+    }
+    document.addEventListener('change', function(e){ if(e.target && e.target.classList && e.target.classList.contains('class-checkbox')) update(); });
+  })();
+</script>
+{% endblock %}

@@ -30,9 +30,74 @@
       {% endfor %}
     </tbody>
   </table>
-  <div class="mt-3">
-    <a class="btn btn-outline-secondary" href="{{ url_for('superadmin_change_password') }}">Change Your Password</a>
-    <a class="btn btn-outline-dark ms-2" href="{{ url_for('superadmin_logout') }}">Logout</a>
+  <div class="row mt-4">
+    <div class="col-md-6">
+      <h5>Notepad</h5>
+      <form method="post" action="{{ url_for('add_note') }}">
+        <div class="mb-2">
+          <textarea name="content" class="form-control" rows="6" placeholder="Write a note for other superadmins..."></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm">Save Note</button>
+      </form>
+      <hr />
+      <div style="max-height:300px; overflow:auto;">
+        {% for n in notes %}
+        <div class="card mb-2">
+          <div class="card-body p-2">
+            <small class="text-muted">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</small>
+            <div>{{ n.content }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-muted">No notes yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-md-6">
+      <h5>Calendar / Appointments</h5>
+      <form method="post" action="{{ url_for('add_appointment') }}">
+        <div class="mb-2">
+          <input name="title" class="form-control" placeholder="Appointment title" />
+        </div>
+        <div class="mb-2">
+          <input name="when" type="datetime-local" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm">Add Appointment</button>
+      </form>
+      <hr />
+      <ul class="list-group">
+        {% for a in appointments %}
+        <li class="list-group-item">
+          <strong>{{ a.title }}</strong>
+          <div class="text-muted">{{ a.when.strftime('%Y-%m-%d %H:%M') if a.when else '' }}</div>
+          <div>{{ a.notes }}</div>
+        </li>
+        {% else %}
+        <li class="list-group-item text-muted">No appointments</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+    <div class="mt-3">
+    <h5>Runtime OpenAI Settings</h5>
+    <form method="post" action="{{ url_for('super_set_openai_key') }}">
+      <div class="mb-2">
+        <input name="openai_key" class="form-control" placeholder="sk-... (runtime only)" value="{{ openai_key or '' }}" />
+      </div>
+      <div class="mb-2 d-flex gap-2">
+        <input name="openai_model" class="form-control" placeholder="model (e.g. gpt-4o-mini)" value="{{ openai_model or '' }}" />
+        <input name="openai_temp" class="form-control" placeholder="temperature (0.0 - 2.0)" value="{{ openai_temp or '' }}" />
+      </div>
+      <button class="btn btn-warning">Save OpenAI Settings</button>
+    </form>
+    <div class="mt-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('superadmin_change_password') }}">Change Your Password</a>
+      <a class="btn btn-outline-dark ms-2" href="{{ url_for('superadmin_logout') }}">Logout</a>
+    </div>
   </div>
 </div>
 {% endblock %}

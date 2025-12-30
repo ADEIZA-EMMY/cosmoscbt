@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+  <h3>Edit Class</h3>
+  <form method="post">
+    <div class="mb-3">
+      <label class="form-label">Name</label>
+      <input name="name" class="form-control" value="{{ c.name }}" required>
+    </div>
+    <div class="d-flex">
+      <a href="{{ url_for('admin_classes') }}" class="btn btn-secondary me-2">Back</a>
+      <button class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

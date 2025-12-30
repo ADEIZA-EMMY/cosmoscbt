@@ -1,5 +1,10 @@
 import sys
 import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from code1 import app, init_db
+
+import sys
+import os
 # Ensure project root is on sys.path so code1 can be imported when running from tests/ directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from code1 import app, init_db

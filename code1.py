@@ -1,6 +1,5 @@
 # app.py (Backend - Flask)
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
-from flask import Response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -14,37 +13,19 @@ try:
 except Exception:
     pdfkit = None
 from io import BytesIO
-from openpyxl import workbook, load_workbook 
+from openpyxl import workbook, load_workbook
 from openpyxl import Workbook
+# Image processing
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 # Optional HTTP client for AI integration
 import json
 import re
 from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
 
-
-def get_subjects_safe():
-    """Return all subjects, adding the `subject_class` column if the DB is missing it."""
-    try:
-        return Subject.query.all()
-    except OperationalError as e:
-        msg = str(e).lower()
-        if 'no such column' in msg and 'subject_class' in msg:
-            try:
-                db.engine.execute("ALTER TABLE subject ADD COLUMN subject_class VARCHAR(50)")
-                print('Added subject_class column via fallback ALTER')
-            except Exception:
-                pass
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
-            try:
-                return Subject.query.all()
-            except Exception:
-                return []
-        raise
-#from gunicorn.app.base import Application
 
 app = Flask(__name__)
 application = app
@@ -59,6 +40,91 @@ db = SQLAlchemy(app)
 # Ensure upload directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# Passport image settings
+MAX_PASSPORT_BYTES = 2 * 1024 * 1024  # 2 MB
+MAX_PASSPORT_DIM = 1024  # max width/height in pixels
+ALLOWED_IMAGE_MIMES = ('image/jpeg', 'image/jpg', 'image/png')
+
+def _safe_path_under_uploads(filename):
+    # ensure filename resolved under upload folder
+    base = os.path.abspath(app.config['UPLOAD_FOLDER'])
+    target = os.path.abspath(os.path.join(base, filename))
+    if not target.startswith(base):
+        raise ValueError('unsafe path')
+    return target
+
+def _remove_old_passport(user):
+    try:
+        if getattr(user, 'passport_filename', None):
+            p = user.passport_filename
+            # support either relative or path-like entries
+            fname = os.path.basename(p)
+            target = os.path.join(app.config['UPLOAD_FOLDER'], 'passports', fname)
+            if os.path.exists(target):
+                os.remove(target)
+    except Exception:
+        pass
+
+def _process_and_save_image_bytes(data_bytes, filename_base):
+    """Validate, resize and save image bytes. Returns relative path or raises."""
+    if Image is None:
+        raise RuntimeError('Pillow is not installed')
+    # quick size check
+    if len(data_bytes) > MAX_PASSPORT_BYTES:
+        # still allow, but we will resize; continue
+        pass
+    try:
+        im = Image.open(io.BytesIO(data_bytes))
+    except Exception as e:
+        raise ValueError('Invalid image data: ' + str(e))
+    # convert to RGB for JPEG
+    try:
+        if im.mode in ('RGBA', 'LA'):
+            bg = Image.new('RGB', im.size, (255,255,255))
+            bg.paste(im, mask=im.split()[-1])
+            im = bg
+        else:
+            im = im.convert('RGB')
+    except Exception:
+        im = im.convert('RGB')
+    # resize if necessary
+    w, h = im.size
+    maxdim = max(w, h)
+    if maxdim > MAX_PASSPORT_DIM:
+        scale = MAX_PASSPORT_DIM / float(maxdim)
+        neww = int(w * scale)
+        newh = int(h * scale)
+        im = im.resize((neww, newh), Image.LANCZOS)
+    # ensure dest directory
+    dest_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+    os.makedirs(dest_dir, exist_ok=True)
+    fname = f"{secure_filename(filename_base)}.jpg"
+    target = os.path.join(dest_dir, fname)
+    # avoid overwriting by adding timestamp if exists
+    if os.path.exists(target):
+        ts = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        fname = f"{secure_filename(filename_base)}_{ts}.jpg"
+        target = os.path.join(dest_dir, fname)
+    # save with reasonable quality
+    try:
+        im.save(target, format='JPEG', quality=85, optimize=True)
+    except Exception:
+        # fallback
+        im.save(target, format='JPEG')
+    return os.path.relpath(target)
+
+# Helper to execute raw DDL in a SQLAlchemy-2-compatible way
+def _exec_ddl(sql):
+    try:
+        conn = db.engine.connect()
+        try:
+            # exec_driver_sql works across dialects and doesn't require Text() wrapper
+            conn.exec_driver_sql(sql)
+        finally:
+            conn.close()
+    except Exception as e:
+        print('DDL exec failed:', sql, e)
+
 # Database Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -66,6 +132,12 @@ class User(db.Model):
     password_hash = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'admin' or 'student'
     full_name = db.Column(db.String(100))
+    # Optional gender field for students/admins (e.g. Male/Female/Other)
+    gender = db.Column(db.String(20), nullable=True)
+    # Student class label (e.g. SS1, JSS2) for student users
+    student_class = db.Column(db.String(50), nullable=True)
+    # Filename for uploaded passport/profile picture
+    passport_filename = db.Column(db.String(200), nullable=True)
     # Temporary plaintext password stored for admin assistance only (cleared when appropriate)
     temp_password = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -109,6 +181,49 @@ class School(db.Model):
     is_restricted = db.Column(db.Boolean, default=False)
 
 
+class StudentClass(db.Model):
+    """Canonical list of classes/levels. Optional school-specific classes when multi-tenant."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('school.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Setting(db.Model):
+    """Simple key/value store for runtime settings persisted to DB."""
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.Text, nullable=True)
+
+
+def get_setting(key, default=None):
+    try:
+        s = Setting.query.get(key)
+        if s:
+            return s.value
+    except Exception:
+        pass
+    return default
+
+
+def set_setting(key, value):
+    try:
+        s = Setting.query.get(key)
+        if not s:
+            s = Setting(key=key, value=value)
+            db.session.add(s)
+        else:
+            s.value = value
+        db.session.commit()
+        return True
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+    return False
+
+
+
 # Defensive schema updates for newly added columns (run at import)
 def _ensure_schema():
     try:
@@ -122,6 +237,49 @@ def _ensure_schema():
                 print('Added user.school_id column via fallback ALTER')
             except Exception as _:
                 print('Failed to add user.school_id column:', str(_))
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+    # Ensure user has student_class and passport_filename columns
+    try:
+        db.session.execute('SELECT student_class FROM user LIMIT 1')
+    except Exception as e:
+        msg = str(e).lower()
+        if 'no such column' in msg and 'student_class' in msg:
+            try:
+                db.engine.execute("ALTER TABLE user ADD COLUMN student_class VARCHAR(50)")
+                print('Added user.student_class column via fallback ALTER')
+            except Exception:
+                pass
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+    try:
+        db.session.execute('SELECT passport_filename FROM user LIMIT 1')
+    except Exception as e:
+        msg = str(e).lower()
+        if 'no such column' in msg and 'passport_filename' in msg:
+            try:
+                db.engine.execute("ALTER TABLE user ADD COLUMN passport_filename VARCHAR(200)")
+                print('Added user.passport_filename column via fallback ALTER')
+            except Exception:
+                pass
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+    try:
+        db.session.execute('SELECT gender FROM user LIMIT 1')
+    except Exception as e:
+        msg = str(e).lower()
+        if 'no such column' in msg and 'gender' in msg:
+            try:
+                db.engine.execute("ALTER TABLE user ADD COLUMN gender VARCHAR(20)")
+                print('Added user.gender column via fallback ALTER')
+            except Exception:
+                pass
         try:
             db.session.rollback()
         except Exception:
@@ -160,6 +318,11 @@ class Question(db.Model):
     correct_answer = db.Column(db.String(1), nullable=False)
     explanation = db.Column(db.Text)
     marks = db.Column(db.Integer, default=1)
+    # Optional image attached to the question (diagram, figure)
+    question_image = db.Column(db.String(200), nullable=True)
+    # Theory question support: if True, `theory_text` holds long-form prompt
+    is_theory = db.Column(db.Boolean, default=False)
+    theory_text = db.Column(db.Text, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -182,6 +345,8 @@ class Exam(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Optional cover/diagram image for the exam
+    exam_image = db.Column(db.String(300), nullable=True)
 
 class ExamSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -215,6 +380,29 @@ class ExamAccessCode(db.Model):
     student = db.relationship('User')
 
 
+class Note(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    content = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Appointment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200))
+    notes = db.Column(db.Text)
+    when = db.Column(db.DateTime)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Recording(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    exam_session_id = db.Column(db.Integer, db.ForeignKey('exam_session.id'))
+    filename = db.Column(db.String(300))
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 def generate_unique_exam_code(attempts=10):
     """Generate a unique six-digit numeric code for an exam."""
     for _ in range(attempts):
@@ -238,6 +426,61 @@ def generate_unique_access_code(attempts=20):
 def init_db():
     with app.app_context():
         db.create_all()
+        # Ensure critical user columns exist (robust ALTER via connection)
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            ucols = [c['name'] for c in inspector.get_columns('user')]
+            needed = [
+                ('student_class', 'VARCHAR(50)'),
+                ('passport_filename', 'VARCHAR(200)'),
+                ('temp_password', 'TEXT'),
+                ('is_restricted', 'INTEGER')
+            ]
+            for col, coltype in needed:
+                if col not in ucols:
+                    try:
+                        _exec_ddl(f"ALTER TABLE user ADD COLUMN {col} {coltype}")
+                        print(f'Added {col} to user table')
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # Ensure question table has image and theory columns
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            if 'question' in inspector.get_table_names():
+                qcols = [c['name'] for c in inspector.get_columns('question')]
+                q_needed = [
+                    ('question_image', 'VARCHAR(200)'),
+                    ('is_theory', 'INTEGER'),
+                    ('theory_text', 'TEXT'),
+                    ('subject_class', 'VARCHAR(50)')
+                ]
+                for col, coltype in q_needed:
+                    if col not in qcols:
+                        try:
+                            _exec_ddl(f"ALTER TABLE question ADD COLUMN {col} {coltype}")
+                            print(f'Added {col} to question table')
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        # Ensure exam table has exam_image column
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            if 'exam' in inspector.get_table_names():
+                ex_cols = [c['name'] for c in inspector.get_columns('exam')]
+                if 'exam_image' not in ex_cols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN exam_image VARCHAR(300)")
+                        print('Added exam_image to exam table')
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         # Defensive: ensure subject table has subject_class column even if inspector failed earlier
         try:
             conn = db.engine.connect()
@@ -351,6 +594,40 @@ def init_db():
                         pass
             except Exception:
                 pass
+            # Ensure question table has image/theory columns
+            try:
+                qcols = [c['name'] for c in inspector.get_columns('question')]
+                if 'question_image' not in qcols:
+                    try:
+                        db.engine.execute("ALTER TABLE question ADD COLUMN question_image VARCHAR(200)")
+                    except Exception:
+                        pass
+                if 'is_theory' not in qcols:
+                    try:
+                        db.engine.execute("ALTER TABLE question ADD COLUMN is_theory INTEGER DEFAULT 0")
+                        db.engine.execute("ALTER TABLE question ADD COLUMN theory_text TEXT")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+                # Ensure question has image and theory columns
+                try:
+                    qcols = [c['name'] for c in inspector.get_columns('question')]
+                    if 'question_image' not in qcols:
+                        try:
+                            db.engine.execute("ALTER TABLE question ADD COLUMN question_image VARCHAR(200)")
+                            print('Added question_image to question table')
+                        except Exception:
+                            pass
+                    if 'is_theory' not in qcols:
+                        try:
+                            db.engine.execute("ALTER TABLE question ADD COLUMN is_theory INTEGER DEFAULT 0")
+                            db.engine.execute("ALTER TABLE question ADD COLUMN theory_text TEXT")
+                            print('Added theory fields to question table')
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
         except Exception:
             # If inspector or ALTER fails, skip — new installs will have column from model
             pass
@@ -689,11 +966,26 @@ def register():
         username = request.form['username']
         password = request.form['password']
         full_name = request.form['full_name']
+        student_class = request.form.get('student_class')
+        gender = request.form.get('gender')
         school_code = request.form.get('school_code')
         role = 'student'  # Only student registration is allowed
         school_id = request.form.get('school_id')
 
-        if User.query.filter_by(username=username).first():
+        try:
+            exists_user = User.query.filter_by(username=username).first()
+        except Exception as e:
+            # likely missing column (gender) or similar schema drift; attempt to add column and retry
+            try:
+                _exec_ddl("ALTER TABLE user ADD COLUMN gender VARCHAR(20)")
+            except Exception:
+                pass
+            try:
+                exists_user = User.query.filter_by(username=username).first()
+            except Exception:
+                exists_user = None
+
+        if exists_user:
             flash('Username already exists', 'danger')
             return render_template('register.html', schools=get_schools_safe())
 
@@ -719,7 +1011,50 @@ def register():
                     return render_template('register.html', schools=get_schools_safe())
 
         user = User(username=username, full_name=full_name, role=role)
+        if gender:
+            user.gender = gender.strip()
         user.set_password(password)
+        if student_class:
+            user.student_class = student_class.strip()
+        # handle passport upload during registration (file upload or camera data URI)
+        passport_saved = False
+        if 'passport' in request.files:
+            pf = request.files['passport']
+            if pf and pf.filename:
+                try:
+                    pfn = secure_filename(pf.filename)
+                    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                    os.makedirs(dest, exist_ok=True)
+                    ppath = os.path.join(dest, pfn)
+                    pf.save(ppath)
+                    user.passport_filename = os.path.relpath(ppath)
+                    passport_saved = True
+                except Exception:
+                    pass
+        # support camera-captured image sent as data URI in form field `passport_data`
+        if not passport_saved and request.form.get('passport_data'):
+            try:
+                data_uri = request.form.get('passport_data')
+                header, encoded = data_uri.split(',', 1)
+                import base64
+                data = base64.b64decode(encoded)
+                # choose filename from username + timestamp
+                ts = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                pfn = f"{username}_{ts}.jpg"
+                dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                os.makedirs(dest, exist_ok=True)
+                ppath = os.path.join(dest, pfn)
+                # process and save bytes (validate/resize)
+                try:
+                    rel = _process_and_save_image_bytes(data, f"{username}_{ts}")
+                    user.passport_filename = rel
+                except Exception:
+                    # fall back to raw save
+                    with open(ppath, 'wb') as fh:
+                        fh.write(data)
+                    user.passport_filename = os.path.relpath(ppath)
+            except Exception:
+                pass
         if school:
             user.school_id = school.id
         db.session.add(user)
@@ -728,7 +1063,13 @@ def register():
         flash('Registration successful! Please login.', 'success')
         return redirect(url_for('login'))
     
-    return render_template('register.html', schools=get_schools_safe())
+    # supply canonical classes into the registration template
+    try:
+        classes = classes_for_school(None)
+    except Exception:
+        classes = []
+    return render_template('register.html', schools=get_schools_safe(), classes=classes)
+    
 
 @app.route('/logout')
 def logout():
@@ -756,7 +1097,35 @@ def admin_dashboard():
         school_obj = None
 
     schools = get_schools_safe()
-    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools)
+    # Also include recent recordings for exams belonging to this admin's school
+    recordings = []
+    try:
+        exam_ids = [e.id for e in exams]
+        if exam_ids:
+            sessions = ExamSession.query.filter(ExamSession.exam_id.in_(exam_ids)).all()
+            sids = [s.id for s in sessions]
+            if sids:
+                raw_recs = Recording.query.filter(Recording.exam_session_id.in_(sids)).order_by(Recording.uploaded_at.desc()).limit(20).all()
+                for rec in raw_recs:
+                    sess = ExamSession.query.get(rec.exam_session_id) if rec.exam_session_id else None
+                    student = None
+                    if sess:
+                        student = User.query.get(sess.student_id)
+                        import ntpath
+                        basename = ntpath.basename(rec.filename or '')
+                        recordings.append({
+                            'id': rec.id,
+                            'filename': rec.filename,
+                            'filename_basename': basename,
+                            'uploaded_at': rec.uploaded_at,
+                            'student_username': getattr(student, 'username', None) if student else None,
+                            'student_full_name': getattr(student, 'full_name', None) if student else None,
+                            'exam_id': sess.exam_id if sess else None
+                        })
+    except Exception:
+        recordings = []
+
+    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings)
 
 
 @app.route('/set_school', methods=['POST'])
@@ -904,6 +1273,340 @@ def students_for_current_user():
         return User.query.filter_by(role='student', school_id=school_id).all()
     except Exception:
         return []
+
+
+def classes_for_school(school_id=None):
+    """Return canonical classes for a school if defined, otherwise return empty list.
+    If school_id is None, return global classes (school_id is NULL).
+    """
+    try:
+        q = StudentClass.query
+        if school_id:
+            # prefer classes for the specific school, but include global ones
+            q = q.filter((StudentClass.school_id == None) | (StudentClass.school_id == school_id))
+        else:
+            q = q.filter(StudentClass.school_id == None)
+        return [c.name for c in q.order_by(StudentClass.name).all()]
+    except Exception:
+        return []
+
+
+# Admin CRUD for StudentClass
+@app.route('/admin/classes')
+def admin_classes():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    try:
+        # show classes for admin's school plus global
+        admin_school_id = None
+        if not session.get('is_superadmin'):
+            try:
+                admin_user = User.query.get(session.get('user_id'))
+                admin_school_id = admin_user.school_id if admin_user else None
+            except Exception:
+                admin_school_id = None
+        if admin_school_id:
+            classes = StudentClass.query.filter((StudentClass.school_id == None) | (StudentClass.school_id == admin_school_id)).order_by(StudentClass.name).all()
+        else:
+            classes = StudentClass.query.order_by(StudentClass.name).all()
+    except Exception:
+        classes = []
+    return render_template('admin/classes.html', classes=classes)
+
+
+@app.route('/admin/class/add', methods=['POST'])
+def admin_add_class():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    name = (request.form.get('name') or '').strip()
+    if not name:
+        flash('Name required', 'warning')
+        return redirect(url_for('admin_classes'))
+    try:
+        admin_school_id = None
+        if not session.get('is_superadmin'):
+            admin_user = User.query.get(session.get('user_id'))
+            admin_school_id = admin_user.school_id if admin_user else None
+        sc = StudentClass(name=name, school_id=admin_school_id)
+        db.session.add(sc)
+        db.session.commit()
+        flash('Class added', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Failed to add class: ' + str(e), 'danger')
+    return redirect(url_for('admin_classes'))
+
+
+@app.route('/admin/class/<int:class_id>/edit', methods=['GET', 'POST'])
+def admin_edit_class(class_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    sc = StudentClass.query.get_or_404(class_id)
+    if request.method == 'POST':
+        name = (request.form.get('name') or '').strip()
+        if not name:
+            flash('Name required', 'warning')
+            return redirect(url_for('admin_edit_class', class_id=class_id))
+        sc.name = name
+        try:
+            db.session.commit()
+            flash('Class updated', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash('Failed to update: ' + str(e), 'danger')
+        return redirect(url_for('admin_classes'))
+    return render_template('admin/edit_class.html', c=sc)
+
+
+@app.route('/admin/class/<int:class_id>/delete', methods=['POST'])
+def admin_delete_class(class_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    sc = StudentClass.query.get_or_404(class_id)
+    try:
+        db.session.delete(sc)
+        db.session.commit()
+        flash('Class deleted', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Failed to delete: ' + str(e), 'danger')
+    return redirect(url_for('admin_classes'))
+
+
+@app.route('/admin/classes/export')
+def admin_export_classes():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    try:
+        admin_school_id = None
+        if not session.get('is_superadmin'):
+            try:
+                admin_user = User.query.get(session.get('user_id'))
+                admin_school_id = admin_user.school_id if admin_user else None
+            except Exception:
+                admin_school_id = None
+        if admin_school_id:
+            rows = StudentClass.query.filter((StudentClass.school_id == None) | (StudentClass.school_id == admin_school_id)).order_by(StudentClass.name).all()
+        else:
+            rows = StudentClass.query.order_by(StudentClass.name).all()
+    except Exception:
+        rows = []
+    # build CSV
+    import csv
+    from io import StringIO, BytesIO
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(['name','school'])
+    for r in rows:
+        school_name = ''
+        try:
+            school_name = r.school.name if r.school else ''
+        except Exception:
+            school_name = ''
+        writer.writerow([r.name or '', school_name])
+    output = si.getvalue().encode('utf-8')
+    return Response(output, mimetype='text/csv', headers={
+        'Content-Disposition': 'attachment; filename=classes.csv'
+    })
+
+
+@app.route('/admin/classes/import', methods=['POST'])
+def admin_import_classes():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    f = request.files.get('file')
+    if not f:
+        flash('No file uploaded', 'warning')
+        return redirect(url_for('admin_classes'))
+    import csv
+    from io import TextIOWrapper
+    created = 0
+    skipped = 0
+    errors = []
+    try:
+        stream = TextIOWrapper(f.stream, encoding='utf-8')
+        reader = csv.DictReader(stream)
+        for row in reader:
+            name = (row.get('name') or '').strip()
+            school_key = (row.get('school') or '').strip()
+            if not name:
+                skipped += 1
+                continue
+            school_obj = None
+            if school_key:
+                # try by name then by code
+                school_obj = School.query.filter((School.name == school_key) | (School.code == school_key)).first()
+            # assign to admin's school if admin is not superadmin and no school provided
+            if not session.get('is_superadmin') and not school_obj:
+                try:
+                    admin_user = User.query.get(session.get('user_id'))
+                    school_obj = School.query.get(admin_user.school_id) if admin_user and admin_user.school_id else None
+                except Exception:
+                    school_obj = None
+            school_id = school_obj.id if school_obj else None
+            # avoid duplicates (same name and school)
+            exists = StudentClass.query.filter_by(name=name, school_id=school_id).first()
+            if exists:
+                skipped += 1
+                continue
+            sc = StudentClass(name=name, school_id=school_id)
+            db.session.add(sc)
+            created += 1
+        db.session.commit()
+        msg = f'Imported {created} classes, skipped {skipped}'
+        if errors:
+            msg += '. Errors: ' + '; '.join(errors[:5])
+        flash(msg, 'success' if not errors else 'warning')
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        errors.append(str(e))
+        flash('Import failed: ' + '; '.join(errors), 'danger')
+    return redirect(url_for('admin_classes'))
+
+
+
+@app.route('/admin/classes/import_xlsx', methods=['POST'])
+def admin_import_classes_xlsx():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    f = request.files.get('file')
+    if not f:
+        flash('No file uploaded', 'warning')
+        return redirect(url_for('admin_classes'))
+    from openpyxl import load_workbook
+    created = 0
+    skipped = 0
+    errors = []
+    try:
+        # read file bytes and load workbook from BytesIO to avoid text wrapper issues
+        data = f.read()
+        from io import BytesIO as _BytesIO
+        wb = load_workbook(filename=_BytesIO(data), read_only=True)
+        ws = wb.active
+        headers = [str(cell.value).strip().lower() if cell.value else '' for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        # map columns
+        name_idx = None
+        school_idx = None
+        for i, h in enumerate(headers):
+            if h == 'name': name_idx = i
+            if h == 'school': school_idx = i
+        if name_idx is None:
+            flash('Excel import failed: header "name" not found', 'danger')
+            return redirect(url_for('admin_classes'))
+        for row in ws.iter_rows(min_row=2):
+            try:
+                name = (str(row[name_idx].value).strip() if row[name_idx].value else '').strip()
+                school_key = (str(row[school_idx].value).strip() if (school_idx is not None and row[school_idx].value) else '')
+                if not name:
+                    skipped += 1
+                    continue
+                school_obj = None
+                if school_key:
+                    school_obj = School.query.filter((School.name == school_key) | (School.code == school_key)).first()
+                if not session.get('is_superadmin') and not school_obj:
+                    try:
+                        admin_user = User.query.get(session.get('user_id'))
+                        school_obj = School.query.get(admin_user.school_id) if admin_user and admin_user.school_id else None
+                    except Exception:
+                        school_obj = None
+                school_id = school_obj.id if school_obj else None
+                exists = StudentClass.query.filter_by(name=name, school_id=school_id).first()
+                if exists:
+                    skipped += 1
+                    continue
+                sc = StudentClass(name=name, school_id=school_id)
+                db.session.add(sc)
+                created += 1
+            except Exception as erow:
+                errors.append(str(erow))
+        db.session.commit()
+        msg = f'Imported {created} classes, skipped {skipped}'
+        if errors:
+            msg += '. Errors: ' + '; '.join(errors[:5])
+        flash(msg, 'success' if not errors else 'warning')
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        flash('Excel import failed: ' + str(e), 'danger')
+    return redirect(url_for('admin_classes'))
+
+
+@app.route('/admin/classes/export.xlsx')
+def admin_export_classes_xlsx():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    try:
+        admin_school_id = None
+        if not session.get('is_superadmin'):
+            try:
+                admin_user = User.query.get(session.get('user_id'))
+                admin_school_id = admin_user.school_id if admin_user else None
+            except Exception:
+                admin_school_id = None
+        if admin_school_id:
+            rows = StudentClass.query.filter((StudentClass.school_id == None) | (StudentClass.school_id == admin_school_id)).order_by(StudentClass.name).all()
+        else:
+            rows = StudentClass.query.order_by(StudentClass.name).all()
+    except Exception:
+        rows = []
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(['name','school'])
+    for r in rows:
+        try:
+            school_name = r.school.name if r.school else ''
+        except Exception:
+            school_name = ''
+        ws.append([r.name or '', school_name])
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return Response(bio.read(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={
+        'Content-Disposition': 'attachment; filename=classes.xlsx'
+    })
+
+
+@app.route('/admin/classes/delete_selected', methods=['POST'])
+def admin_delete_selected_classes():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    ids_raw = (request.form.get('ids') or '').strip()
+    if not ids_raw:
+        flash('No classes selected', 'warning')
+        return redirect(url_for('admin_classes'))
+    ids = [int(x) for x in ids_raw.split(',') if x.strip().isdigit()]
+    deleted = 0
+    errors = []
+    try:
+        for cid in ids:
+            sc = StudentClass.query.get(cid)
+            if sc:
+                db.session.delete(sc)
+                deleted += 1
+        db.session.commit()
+        flash(f'Deleted {deleted} classes', 'success')
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        flash('Failed to delete classes: ' + str(e), 'danger')
+    return redirect(url_for('admin_classes'))
 
 
 def exams_for_school(school_id):
@@ -1122,8 +1825,81 @@ def admin_students():
     if 'user_id' not in session or session['role'] != 'admin':
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
-    students = students_for_current_user()
-    return render_template('admin/students.html', students=students)
+    # Present a class-selection UI first, then list students for that class.
+    school_id = None
+    try:
+        school_id = _get_effective_school_id()
+    except Exception:
+        school_id = None
+
+    # Prefer canonical `StudentClass` entries; fall back to inferring from existing students
+    try:
+        classes = classes_for_school(school_id)
+        if not classes:
+            query = User.query.filter_by(role='student')
+            if school_id:
+                query = query.filter(User.school_id == school_id)
+            raw_classes = [r[0] for r in query.with_entities(User.student_class).distinct().all()]
+            classes = sorted([c for c in set([(s or '').strip() for s in raw_classes]) if c])
+    except Exception:
+        classes = []
+
+    selected_class = request.args.get('class')
+    students = []
+    if selected_class:
+        try:
+            # If 'ALL' selected, return all students for the school (or all if superadmin)
+            if selected_class == 'ALL':
+                students = students_for_current_user()
+            else:
+                # Filter by selected class
+                if session.get('is_superadmin'):
+                    students = User.query.filter_by(role='student', student_class=selected_class).order_by(User.created_at.desc()).all()
+                else:
+                    if school_id:
+                        students = User.query.filter_by(role='student', school_id=school_id, student_class=selected_class).order_by(User.created_at.desc()).all()
+                    else:
+                        students = []
+        except Exception:
+            students = []
+
+    return render_template('admin/students.html', students=students, classes=classes, selected_class=selected_class)
+
+
+@app.route('/admin/students/json')
+def admin_students_json():
+    """Return JSON list of students for the given class (used by AJAX)."""
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return {'error': 'access denied'}, 403
+    cls = request.args.get('class')
+    school_id = None
+    try:
+        school_id = _get_effective_school_id()
+    except Exception:
+        school_id = None
+    students = []
+    try:
+        if not cls or cls == 'ALL':
+            students = students_for_current_user()
+        else:
+            if session.get('is_superadmin') or not school_id:
+                students = User.query.filter_by(role='student', student_class=cls).order_by(User.created_at.desc()).all()
+            else:
+                students = User.query.filter_by(role='student', school_id=school_id, student_class=cls).order_by(User.created_at.desc()).all()
+        out = []
+        for s in students:
+            out.append({
+                'id': s.id,
+                'username': s.username,
+                'full_name': s.full_name or '',
+                'student_class': s.student_class or '',
+                'gender': s.gender or '',
+                'temp_password': s.temp_password or '',
+                'created_at': s.created_at.isoformat() if s.created_at else ''
+            })
+        return {'students': out}
+    except Exception as e:
+        return {'error': str(e)}, 500
 
 
 @app.route('/6869', methods=['GET'])
@@ -1326,11 +2102,75 @@ def superadmin_set_admin_school(user_id):
 @app.route('/6869')
 def super_admin_6869():
     # Special superadmin-only page
-    if 'user_id' not in session or session.get('role') != 'superadmin':
+    if 'user_id' not in session or not session.get('is_superadmin'):
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
     admins = User.query.filter_by(role='admin').all()
-    return render_template('super_admin_manage.html', admins=admins)
+    # Load persistent notes and upcoming appointments for display
+    try:
+        notes = Note.query.order_by(Note.created_at.desc()).limit(50).all()
+    except Exception:
+        notes = []
+    try:
+        appointments = Appointment.query.order_by(Appointment.when.asc()).limit(50).all()
+    except Exception:
+        appointments = []
+    # Load current OpenAI settings for display
+    try:
+        current_key = get_setting('openai_api_key') or app.config.get('OPENAI_API_KEY')
+    except Exception:
+        current_key = None
+    try:
+        current_model = get_setting('openai_model') or app.config.get('OPENAI_MODEL')
+    except Exception:
+        current_model = None
+    try:
+        current_temp = get_setting('openai_temperature') or app.config.get('OPENAI_TEMPERATURE')
+    except Exception:
+        current_temp = None
+    return render_template('super_admin_manage.html', admins=admins, notes=notes, appointments=appointments,
+                           openai_key=current_key, openai_model=current_model, openai_temp=current_temp)
+
+
+@app.route('/6869/set_openai_key', methods=['POST'])
+def super_set_openai_key():
+    if 'user_id' not in session or session.get('role') != 'superadmin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    key = request.form.get('openai_key','').strip()
+    model = request.form.get('openai_model','').strip()
+    temp = request.form.get('openai_temp','').strip()
+    if not key and not model and not temp:
+        flash('No OpenAI settings provided', 'warning')
+        return redirect(url_for('super_admin_6869'))
+    # persist to runtime config and DB
+    if key:
+        app.config['OPENAI_API_KEY'] = key
+        try:
+            set_setting('openai_api_key', key)
+        except Exception:
+            pass
+    if model:
+        app.config['OPENAI_MODEL'] = model
+        try:
+            set_setting('openai_model', model)
+        except Exception:
+            pass
+    if temp:
+        try:
+            tv = float(temp)
+            if tv < 0.0 or tv > 2.0:
+                raise ValueError('out of range')
+            app.config['OPENAI_TEMPERATURE'] = tv
+            try:
+                set_setting('openai_temperature', str(tv))
+            except Exception:
+                pass
+        except Exception:
+            flash('Invalid temperature value (must be 0.0 - 2.0)', 'warning')
+            return redirect(url_for('super_admin_6869'))
+    flash('OpenAI settings updated and persisted', 'success')
+    return redirect(url_for('super_admin_6869'))
 
 
 @app.route('/6869/toggle/<int:user_id>', methods=['POST'])
@@ -1387,6 +2227,7 @@ def admin_add_student():
         username = request.form.get('username', '').strip()
         full_name = request.form.get('full_name', '').strip()
         password = request.form.get('password', '').strip()
+        gender = request.form.get('gender')
 
         if not username:
             flash('Username is required', 'danger')
@@ -1402,8 +2243,51 @@ def admin_add_student():
 
         user = User(username=username, full_name=full_name, role='student')
         user.set_password(password)
+        if gender:
+            user.gender = gender.strip()
         # Store a temporary plaintext copy for admin view (note: plaintext storage is insecure)
         user.temp_password = password
+        # student class and optional passport
+        student_class = request.form.get('student_class')
+        if student_class:
+            user.student_class = student_class.strip()
+        # handle file upload or camera data URI for admin add
+        passport_saved = False
+        if 'passport' in request.files:
+            pf = request.files['passport']
+            if pf and pf.filename:
+                try:
+                    pfn = secure_filename(pf.filename)
+                    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                    os.makedirs(dest, exist_ok=True)
+                    ppath = os.path.join(dest, pfn)
+                    pf.save(ppath)
+                    user.passport_filename = os.path.relpath(ppath)
+                    passport_saved = True
+                except Exception:
+                    pass
+        if not passport_saved and request.form.get('passport_data'):
+            try:
+                data_uri = request.form.get('passport_data')
+                header, encoded = data_uri.split(',', 1)
+                import base64
+                data = base64.b64decode(encoded)
+                ts = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                pfn = f"{username}_{ts}.jpg"
+                dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                os.makedirs(dest, exist_ok=True)
+                ppath = os.path.join(dest, pfn)
+                # process and save bytes (validate/resize)
+                try:
+                    rel = _process_and_save_image_bytes(data, f"{username}_{ts}")
+                    user.passport_filename = rel
+                except Exception:
+                    # fall back to raw save
+                    with open(ppath, 'wb') as fh:
+                        fh.write(data)
+                    user.passport_filename = os.path.relpath(ppath)
+            except Exception:
+                pass
         # Assign the student to the admin's school (superadmin may provide explicit school_id)
         try:
             if session.get('is_superadmin'):
@@ -1424,12 +2308,31 @@ def admin_add_student():
         except Exception:
             pass
         db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('Failed to save student', 'danger')
+            return render_template('admin/add_student.html', classes=classes)
 
         flash(f'Student {username} created successfully', 'success')
         return redirect(url_for('admin_students'))
 
-    return render_template('admin/add_student.html')
+    # supply canonical classes to template
+    try:
+        admin_school_id = None
+        if session.get('is_superadmin'):
+            admin_school_id = None
+        else:
+            try:
+                admin_user = User.query.get(session.get('user_id'))
+                admin_school_id = admin_user.school_id if admin_user else None
+            except Exception:
+                admin_school_id = None
+        classes = classes_for_school(admin_school_id)
+    except Exception:
+        classes = []
+    return render_template('admin/add_student.html', classes=classes)
 
 
 @app.route('/admin/student/<int:user_id>/delete', methods=['POST'])
@@ -1495,6 +2398,111 @@ def admin_reset_student_password(user_id):
     return redirect(url_for('admin_students'))
 
 
+@app.route('/admin/student/<int:user_id>/edit', methods=['GET', 'POST'])
+def admin_edit_student(user_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    user = User.query.get_or_404(user_id)
+    if user.role != 'student':
+        flash('Can only edit student users', 'warning')
+        return redirect(url_for('admin_students'))
+
+    # permission: admin may only edit students in their school unless superadmin
+    try:
+        if not session.get('is_superadmin'):
+            cur_sid = _get_session_school_id()
+            if not user.school_id or int(user.school_id) != int(cur_sid):
+                flash('You may only manage students from your school.', 'danger')
+                return redirect(url_for('admin_students'))
+    except Exception:
+        pass
+
+    if request.method == 'POST':
+        full_name = (request.form.get('full_name') or '').strip()
+        student_class = (request.form.get('student_class') or '').strip()
+        gender = (request.form.get('gender') or '').strip()
+        # superadmin may change school
+        if session.get('is_superadmin'):
+            try:
+                sid = request.form.get('school_id')
+                user.school_id = int(sid) if sid else None
+            except Exception:
+                pass
+        # update basic fields
+        user.full_name = full_name
+        user.student_class = student_class
+        if gender:
+            user.gender = gender
+
+        # handle passport upload (file or camera data URI)
+        passport_saved = False
+        if 'passport' in request.files:
+            pf = request.files['passport']
+            if pf and pf.filename:
+                try:
+                    pfn = secure_filename(pf.filename)
+                    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                    os.makedirs(dest, exist_ok=True)
+                    ppath = os.path.join(dest, pfn)
+                    pf.save(ppath)
+                    user.passport_filename = os.path.relpath(ppath)
+                    passport_saved = True
+                except Exception as e:
+                    flash('Failed to save passport: ' + str(e), 'warning')
+        if not passport_saved and request.form.get('passport_data'):
+            try:
+                data_uri = request.form.get('passport_data')
+                header, encoded = data_uri.split(',', 1)
+                import base64
+                data = base64.b64decode(encoded)
+                ts = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                pfn = f"student_{user.id if user.id else 'new'}_{ts}.jpg"
+                dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                os.makedirs(dest, exist_ok=True)
+                ppath = os.path.join(dest, pfn)
+                # process and save bytes (validate/resize)
+                try:
+                    rel = _process_and_save_image_bytes(data, f"student_{user.id if user.id else 'new'}_{ts}")
+                    user.passport_filename = rel
+                except Exception:
+                    with open(ppath, 'wb') as fh:
+                        fh.write(data)
+                    user.passport_filename = os.path.relpath(ppath)
+            except Exception as e:
+                flash('Failed to save passport: ' + str(e), 'warning')
+
+        try:
+            db.session.commit()
+            flash('Student updated', 'success')
+        except Exception as e:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            flash('Failed to update student: ' + str(e), 'danger')
+        return redirect(url_for('admin_students'))
+
+    # GET -> render edit form
+    try:
+        admin_school_id = None
+        if session.get('is_superadmin'):
+            admin_school_id = None
+        else:
+            try:
+                admin_user = User.query.get(session.get('user_id'))
+                admin_school_id = admin_user.school_id if admin_user else None
+            except Exception:
+                admin_school_id = None
+        classes = classes_for_school(admin_school_id)
+        schools = School.query.order_by(School.name).all() if session.get('is_superadmin') else []
+    except Exception:
+        classes = []
+        schools = []
+    return render_template('admin/edit_student.html', student=user, classes=classes, schools=schools)
+
+
 @app.route('/admin/students/delete_selected', methods=['POST'])
 def admin_delete_selected_students():
     if 'user_id' not in session or session.get('role') != 'admin':
@@ -1549,6 +2557,301 @@ def admin_delete_selected_students():
             pass
 
     flash(f'Deleted {deleted} students', 'success')
+    return redirect(url_for('admin_students'))
+
+
+@app.route('/admin/students/export')
+def admin_export_students():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    cls = request.args.get('class')
+    school_id = None
+    try:
+        school_id = _get_effective_school_id()
+    except Exception:
+        school_id = None
+    try:
+        if cls and cls != 'ALL':
+            if session.get('is_superadmin') or not school_id:
+                students = User.query.filter_by(role='student', student_class=cls).order_by(User.created_at.desc()).all()
+            else:
+                students = User.query.filter_by(role='student', school_id=school_id, student_class=cls).order_by(User.created_at.desc()).all()
+        else:
+            students = students_for_current_user()
+    except Exception:
+        students = []
+
+    import csv
+    from io import StringIO
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(['username','full_name','student_class','gender','temp_password','school'])
+    for s in students:
+        school_name = ''
+        try:
+            school_name = s.school.name if s.school else ''
+        except Exception:
+            school_name = ''
+        writer.writerow([s.username or '', s.full_name or '', s.student_class or '', s.gender or '', s.temp_password or '', school_name])
+    output = si.getvalue().encode('utf-8')
+    return Response(output, mimetype='text/csv', headers={
+        'Content-Disposition': 'attachment; filename=students.csv'
+    })
+
+
+@app.route('/admin/students/export.xlsx')
+def admin_export_students_xlsx():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    cls = request.args.get('class')
+    school_id = None
+    try:
+        school_id = _get_effective_school_id()
+    except Exception:
+        school_id = None
+    try:
+        if cls and cls != 'ALL':
+            if session.get('is_superadmin') or not school_id:
+                students = User.query.filter_by(role='student', student_class=cls).order_by(User.created_at.desc()).all()
+            else:
+                students = User.query.filter_by(role='student', school_id=school_id, student_class=cls).order_by(User.created_at.desc()).all()
+        else:
+            students = students_for_current_user()
+    except Exception:
+        students = []
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(['username','full_name','student_class','gender','temp_password','school'])
+    for s in students:
+        try:
+            school_name = s.school.name if s.school else ''
+        except Exception:
+            school_name = ''
+        ws.append([s.username or '', s.full_name or '', s.student_class or '', s.gender or '', s.temp_password or '', school_name])
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return Response(bio.read(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={
+        'Content-Disposition': 'attachment; filename=students.xlsx'
+    })
+
+
+@app.route('/admin/students/template')
+def admin_students_template():
+    # simple CSV template download
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    import csv
+    from io import StringIO
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(['username','full_name','student_class','gender','temp_password','school'])
+    # example row left blank
+    writer.writerow(['example.username','Full Name','SS1','Male','optional_password','Example School'])
+    output = si.getvalue().encode('utf-8')
+    return Response(output, mimetype='text/csv', headers={
+        'Content-Disposition': 'attachment; filename=students_template.csv'
+    })
+
+
+@app.route('/admin/students/template.xlsx')
+def admin_students_template_xlsx():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(['username','full_name','student_class','gender','temp_password','school'])
+    ws.append(['example.username','Full Name','SS1','Male','optional_password','Example School'])
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return Response(bio.read(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={
+        'Content-Disposition': 'attachment; filename=students_template.xlsx'
+    })
+
+
+@app.route('/admin/students/import', methods=['POST'])
+def admin_import_students():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    f = request.files.get('file')
+    if not f:
+        flash('No file uploaded', 'warning')
+        return redirect(url_for('admin_students'))
+    import csv
+    from io import TextIOWrapper
+    created = 0
+    skipped = 0
+    errors = []
+    details = []
+    class_from_form = (request.form.get('class') or '').strip()
+    try:
+        stream = TextIOWrapper(f.stream, encoding='utf-8')
+        reader = csv.DictReader(stream)
+        for i, raw_row in enumerate(reader, start=2):
+            # normalize keys to lowercase for flexible headers
+            try:
+                row = { (k or '').strip().lower(): (v or '').strip() for k, v in raw_row.items() }
+            except Exception:
+                row = { }
+            username = (row.get('username') or row.get('email') or row.get('user') or '').strip()
+            full_name = (row.get('full_name') or row.get('name') or '').strip()
+            student_class = (row.get('student_class') or row.get('class') or '').strip()
+            gender = (row.get('gender') or row.get('sex') or '').strip()
+            temp_pw = (row.get('temp_password') or row.get('password') or '').strip()
+            school_key = (row.get('school') or row.get('school_name') or row.get('schoolcode') or '').strip()
+
+            if not username:
+                skipped += 1
+                details.append(f'Row {i}: missing username')
+                continue
+            if User.query.filter_by(username=username).first():
+                skipped += 1
+                details.append(f'Row {i}: username {username} already exists')
+                continue
+
+            # prefer class passed from UI when row doesn't include it
+            if not student_class and class_from_form:
+                student_class = class_from_form
+
+            school_obj = None
+            if school_key:
+                school_obj = School.query.filter((School.name == school_key) | (School.code == school_key)).first()
+            if not session.get('is_superadmin') and not school_obj:
+                try:
+                    admin_user = User.query.get(session.get('user_id'))
+                    school_obj = School.query.get(admin_user.school_id) if admin_user and admin_user.school_id else None
+                except Exception:
+                    school_obj = None
+
+            try:
+                user = User(username=username, full_name=full_name, role='student')
+                if gender:
+                    user.gender = gender
+                pw = temp_pw if temp_pw else username
+                user.set_password(pw)
+                user.temp_password = pw
+                if student_class:
+                    user.student_class = student_class
+                user.school_id = school_obj.id if school_obj else None
+                db.session.add(user)
+                created += 1
+            except Exception as er:
+                skipped += 1
+                details.append(f'Row {i}: failed to create {username} ({er})')
+        db.session.commit()
+        msg = f'Imported {created} students, skipped {skipped}'
+        if details:
+            msg += '. ' + '; '.join(details[:5])
+        flash(msg, 'success' if not details else 'warning')
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        errors.append(str(e))
+        flash('Import failed: ' + '; '.join(errors), 'danger')
+    return redirect(url_for('admin_students'))
+
+
+@app.route('/admin/students/import_xlsx', methods=['POST'])
+def admin_import_students_xlsx():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    f = request.files.get('file')
+    if not f:
+        flash('No file uploaded', 'warning')
+        return redirect(url_for('admin_students'))
+    from openpyxl import load_workbook
+    created = 0
+    skipped = 0
+    errors = []
+    try:
+        data = f.read()
+        from io import BytesIO as _BytesIO
+        wb = load_workbook(filename=_BytesIO(data), read_only=True)
+        ws = wb.active
+        headers = [str(cell.value).strip().lower() if cell.value else '' for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        # map columns
+        idx = {h:i for i,h in enumerate(headers)}
+        if 'username' not in idx:
+            flash('Excel import failed: header "username" not found', 'danger')
+            return redirect(url_for('admin_students'))
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+            try:
+                def cell_val(key_names):
+                    for kn in key_names:
+                        if kn in idx:
+                            v = row[idx.get(kn)].value
+                            if v is not None:
+                                return str(v).strip()
+                    return ''
+
+                username = cell_val(['username','email','user'])
+                if not username:
+                    skipped += 1
+                    errors.append(f'Row {row_idx}: missing username')
+                    continue
+                if User.query.filter_by(username=username).first():
+                    skipped += 1
+                    errors.append(f'Row {row_idx}: username {username} exists')
+                    continue
+                full_name = cell_val(['full_name','name'])
+                student_class = cell_val(['student_class','class'])
+                gender = cell_val(['gender','sex'])
+                temp_pw = cell_val(['temp_password','password'])
+                school_key = cell_val(['school','school_name','schoolcode'])
+
+                # respect class selected in form when absent from row
+                form_cls = (request.form.get('class') or '').strip()
+                if not student_class and form_cls:
+                    student_class = form_cls
+                # respect form gender if missing in row (unlikely)
+                form_gender = (request.form.get('gender') or '').strip()
+                if not gender and form_gender:
+                    gender = form_gender
+                school_obj = None
+                if school_key:
+                    school_obj = School.query.filter((School.name == school_key) | (School.code == school_key)).first()
+                if not session.get('is_superadmin') and not school_obj:
+                    try:
+                        admin_user = User.query.get(session.get('user_id'))
+                        school_obj = School.query.get(admin_user.school_id) if admin_user and admin_user.school_id else None
+                    except Exception:
+                        school_obj = None
+                user = User(username=username, full_name=full_name, role='student')
+                if gender:
+                    user.gender = gender
+                pw = temp_pw if temp_pw else username
+                user.set_password(pw)
+                user.temp_password = pw
+                if student_class:
+                    user.student_class = student_class
+                user.school_id = school_obj.id if school_obj else None
+                db.session.add(user)
+                created += 1
+            except Exception as erow:
+                errors.append(f'Row {row_idx}: {erow}')
+        db.session.commit()
+        msg = f'Imported {created} students, skipped {skipped}'
+        if errors:
+            msg += '. Errors: ' + '; '.join(errors[:5])
+        flash(msg, 'success' if not errors else 'warning')
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        flash('Excel import failed: ' + str(e), 'danger')
     return redirect(url_for('admin_students'))
 
 @app.route('/admin/questions')
@@ -1672,6 +2975,8 @@ def add_question():
         correct_answer = request.form['correct_answer'].upper().strip()
         explanation = request.form.get('explanation', '')
         marks = request.form.get('marks', 1)
+        is_theory = bool(request.form.get('is_theory'))
+        theory_text = request.form.get('theory_text', '')
         
         question = Question(
             subject_id=subject_id,
@@ -1682,10 +2987,25 @@ def add_question():
             option_d=option_d,
             option_e=option_e,
             correct_answer=correct_answer,
+            is_theory=is_theory,
+            theory_text=theory_text if is_theory else None,
             explanation=explanation,
             marks=marks,
             created_by=session['user_id']
         )
+        # handle optional image upload
+        if 'question_image' in request.files:
+            qf = request.files['question_image']
+            if qf and qf.filename:
+                try:
+                    qfn = secure_filename(qf.filename)
+                    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'question_images')
+                    os.makedirs(dest, exist_ok=True)
+                    qpath = os.path.join(dest, qfn)
+                    qf.save(qpath)
+                    question.question_image = os.path.relpath(qpath)
+                except Exception:
+                    pass
         
         db.session.add(question)
         db.session.commit()
@@ -1694,6 +3014,12 @@ def add_question():
         return redirect(url_for('admin_questions'))
     
     return render_template('admin/add_question.html', subjects=subjects)
+
+
+@app.route('/admin/add_question', methods=['GET', 'POST'])
+def add_question_alias():
+    # Backwards-compatible alias for older URLs/users
+    return redirect(url_for('add_question'))
 
 @app.route('/admin/question/upload', methods=['GET', 'POST'])
 def upload_questions():
@@ -1720,6 +3046,20 @@ def upload_questions():
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
+            # Save any uploaded image files and build filename->path map
+            uploaded_images = {}
+            try:
+                images = request.files.getlist('images') if 'images' in request.files else []
+                img_dest = os.path.join(app.config['UPLOAD_FOLDER'], 'question_images')
+                os.makedirs(img_dest, exist_ok=True)
+                for img in images:
+                    if img and img.filename:
+                        img_name = secure_filename(img.filename)
+                        img_path = os.path.join(img_dest, img_name)
+                        img.save(img_path)
+                        uploaded_images[img_name] = os.path.relpath(img_path)
+            except Exception:
+                uploaded_images = {}
             
             try:
                 df = pd.read_excel(filepath)
@@ -1753,19 +3093,31 @@ def upload_questions():
                 for row_idx, row in df.iterrows():
                     excel_row = int(row_idx) + 2
 
-                    # Validate required fields
+                    # Validate required fields (either MCQ or Theory)
                     q_text = row.get('Question')
                     if pd.isna(q_text) or str(q_text).strip() == '':
                         errors.append((excel_row, 'Missing question text'))
                         continue
 
-                    if pd.isna(row.get('Option A')) or pd.isna(row.get('Option B')):
-                        errors.append((excel_row, 'Missing Option A or Option B'))
-                        continue
+                    is_theory = False
+                    try:
+                        it = row.get('Is Theory')
+                        if not pd.isna(it) and str(it).strip().lower() in ['1','true','yes','y','t']:
+                            is_theory = True
+                    except Exception:
+                        is_theory = False
 
-                    if pd.isna(row.get('Correct Answer')) or str(row.get('Correct Answer')).strip() == '':
-                        errors.append((excel_row, 'Missing Correct Answer'))
-                        continue
+                    if is_theory:
+                        if pd.isna(row.get('Theory')) or str(row.get('Theory')).strip() == '':
+                            errors.append((excel_row, 'Theory question missing Theory text'))
+                            continue
+                    else:
+                        if pd.isna(row.get('Option A')) or pd.isna(row.get('Option B')):
+                            errors.append((excel_row, 'Missing Option A or Option B'))
+                            continue
+                        if pd.isna(row.get('Correct Answer')) or str(row.get('Correct Answer')).strip() == '':
+                            errors.append((excel_row, 'Missing Correct Answer'))
+                            continue
 
                     # Parse marks
                     marks_val = 1
@@ -1806,12 +3158,15 @@ def upload_questions():
                     rows_to_insert.append({
                         'subject_id': subject_for_row,
                         'question_text': str(q_text).strip(),
+                        'is_theory': is_theory,
+                        'theory_text': safe_val('Theory', row),
                         'option_a': safe_val('Option A', row),
                         'option_b': safe_val('Option B', row),
                         'option_c': safe_val('Option C', row),
                         'option_d': safe_val('Option D', row),
                         'option_e': safe_val('Option E', row),
-                        'correct_answer': str(row.get('Correct Answer')).upper().strip(),
+                        'correct_answer': (str(row.get('Correct Answer')).upper().strip() if not is_theory else ''),
+                        'question_image': safe_val('Image Filename', row),
                         'explanation': safe_val('Explanation', row),
                         'marks': marks_val
                     })
@@ -1852,18 +3207,31 @@ def upload_questions():
                     except Exception:
                         sc = subject_class or None
 
+                    # Map any referenced image filename to the stored path if uploaded
+                    q_image = None
+                    try:
+                        qref = rdata.get('question_image') or ''
+                        if qref:
+                            # Prefer exact filename match from uploaded images
+                            q_image = uploaded_images.get(os.path.basename(qref)) or qref
+                    except Exception:
+                        q_image = rdata.get('question_image') or None
+
                     question = Question(
                         subject_id=sid,
                         question_text=rdata['question_text'],
-                        option_a=rdata['option_a'],
-                        option_b=rdata['option_b'],
-                        option_c=rdata['option_c'],
-                        option_d=rdata['option_d'],
-                        option_e=rdata['option_e'],
-                        correct_answer=rdata['correct_answer'],
-                        explanation=rdata['explanation'],
-                        marks=rdata['marks'],
+                        option_a=rdata.get('option_a',''),
+                        option_b=rdata.get('option_b',''),
+                        option_c=rdata.get('option_c',''),
+                        option_d=rdata.get('option_d',''),
+                        option_e=rdata.get('option_e',''),
+                        correct_answer=rdata.get('correct_answer',''),
+                        explanation=rdata.get('explanation',''),
+                        marks=rdata.get('marks',1),
                         subject_class=sc,
+                        is_theory=bool(rdata.get('is_theory', False)),
+                        theory_text=rdata.get('theory_text') or None,
+                        question_image=q_image,
                         created_by=session['user_id']
                     )
                     db.session.add(question)
@@ -1897,6 +3265,33 @@ def upload_questions():
             classes.append(c)
 
     return render_template('admin/upload_questions.html', subjects=subjects, classes=classes)
+
+
+@app.route('/uploads/<path:filename>')
+def serve_uploads(filename):
+    # Serve any uploaded file under the uploads directory. Use safe path join.
+    base = os.path.abspath(app.config.get('UPLOAD_FOLDER', 'uploads'))
+    target = os.path.abspath(os.path.join(base, filename))
+    if not target.startswith(base):
+        return 'Access denied', 403
+    if not os.path.exists(target):
+        return 'Not found', 404
+    return send_file(target)
+
+
+@app.route('/media/passports/<path:filename>')
+def serve_passport(filename):
+    return serve_uploads(os.path.join('passports', filename))
+
+
+@app.route('/media/questions/<path:filename>')
+def serve_question_image(filename):
+    return serve_uploads(os.path.join('question_images', filename))
+
+
+@app.route('/media/recordings/<path:filename>')
+def serve_recording(filename):
+    return serve_uploads(os.path.join('recordings', filename))
 
 
 @app.route('/admin/question/<int:question_id>/delete', methods=['POST'])
@@ -2036,10 +3431,10 @@ def download_question_template():
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
 
-    # Define template columns
+    # Define template columns (support theory and image filename)
     cols = [
-        'Subject Code', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Option E',
-        'Correct Answer', 'Explanation', 'Mark'
+        'Subject Code', 'Question', 'Is Theory', 'Theory', 'Option A', 'Option B', 'Option C', 'Option D', 'Option E',
+        'Correct Answer', 'Image Filename', 'Explanation', 'Mark'
     ]
 
     # Create empty DataFrame with headers
@@ -2093,80 +3488,164 @@ def generate_questions():
         flash('Selected subject not found', 'danger')
         return redirect(url_for('generate_questions'))
 
-    # Try to use OpenAI API if API key provided in environment
-    OPENAI_KEY = os.getenv('OPENAI_API_KEY')
+    # Try to use OpenAI API if API key provided in app config or environment
+    OPENAI_KEY = app.config.get('OPENAI_API_KEY') or os.getenv('OPENAI_API_KEY')
     generated = []
 
+    def _validate_gen_array(arr, limit):
+        good = []
+        if not isinstance(arr, list):
+            return good
+        for item in arr:
+            if not isinstance(item, dict):
+                continue
+            qtext = (item.get('question_text') or '').strip()
+            a = (item.get('option_a') or '').strip()
+            b = (item.get('option_b') or '').strip()
+            c = (item.get('option_c') or '').strip()
+            d = (item.get('option_d') or '').strip()
+            e = (item.get('option_e') or '').strip()
+            ca = (item.get('correct_answer') or '').upper().strip()
+            if not qtext or not a or not b:
+                continue
+            if ca not in ['A','B','C','D','E']:
+                ca = 'A'
+            try:
+                marks = int(item.get('marks') or 1)
+            except Exception:
+                marks = 1
+            # limit lengths to avoid DB overflow
+            qtext = qtext[:2000]
+            a,b,c,d,e = [x[:500] for x in (a,b,c,d,e)]
+            good.append({
+                'question_text': qtext,
+                'option_a': a,
+                'option_b': b,
+                'option_c': c,
+                'option_d': d,
+                'option_e': e,
+                'correct_answer': ca,
+                'explanation': (item.get('explanation') or '')[:1000],
+                'marks': marks,
+                'is_theory': bool(item.get('is_theory', False)),
+                'theory_text': (item.get('theory_text') or None)
+            })
+            if len(good) >= limit:
+                break
+        return good
+
     if OPENAI_KEY:
-        # Build a prompt asking for JSON array of questions
+        # Build a more robust few-shot prompt with an explicit JSON example
         system_prompt = (
-            "You are an exam question generator. Generate the requested number of multiple-choice questions "
-            "suitable for the given subject and class level. Return a JSON array where each element is an object with keys: "
-            "question_text, option_a, option_b, option_c, option_d, option_e (optional), correct_answer (A/B/C/D/E), explanation (optional), marks (integer)."
+            "You are an expert exam question writer. Produce high-quality, curriculum-aligned multiple-choice questions. "
+            "Respond with a JSON array ONLY. Each element must be an object with these keys: \n"
+            " - question_text (string),\n"
+            " - option_a (string), option_b (string), option_c (string, optional), option_d (string, optional), option_e (string, optional),\n"
+            " - correct_answer (one of 'A','B','C','D','E'),\n"
+            " - explanation (string, optional),\n"
+            " - marks (integer, default 1),\n"
+            " - is_theory (boolean, optional), theory_text (string, optional)\n"
+            "Ensure distractors are plausible and non-repetitive. Keep each option concise (<=120 chars). Do not include any commentary or text outside the JSON array."
         )
 
-        # Build user prompt including optional topics
+        example_obj = {
+            'question_text': f'In {subject.name}, which statement best describes the primary function of chlorophyll?',
+            'option_a': 'Absorb light energy for photosynthesis',
+            'option_b': 'Store glucose produced during photosynthesis',
+            'option_c': 'Transport water from roots to leaves',
+            'option_d': 'Protect leaves from herbivores',
+            'option_e': '',
+            'correct_answer': 'A',
+            'explanation': 'Chlorophyll absorbs light and converts it into chemical energy used in photosynthesis.',
+            'marks': 1
+        }
+
         topic_section = ''
         if topics:
             topic_section = 'Focus topics: ' + ', '.join(topics) + '\n'
 
         user_prompt = (
-            f"Subject: {subject.name}\n{topic_section}Class level: {class_level or 'unspecified'}\nTotal questions: {total_q}\n"
-            "Return only valid JSON. Keep options concise. Ensure exactly one correct_answer per question."
+            f"Generate {total_q} MCQ(s) for Subject: {subject.name}. Class level: {class_level or 'unspecified'}.\n"
+            f"{topic_section}Return only a JSON array of question objects as described. Prioritize clarity, curriculum relevance, and non-ambiguous correct options."
         )
 
+        # Use official OpenAI SDK if available for more robust calls
         try:
-            try:
-                import requests
-            except Exception:
-                requests = None
+            import openai
+            from time import sleep
+            openai.api_key = OPENAI_KEY
+            openai_model = app.config.get('OPENAI_MODEL', 'gpt-4o-mini')
+            openai_temp = app.config.get('OPENAI_TEMPERATURE', 0.35)
 
-            headers = {
-                'Authorization': f'Bearer {OPENAI_KEY}',
-                'Content-Type': 'application/json'
-            }
-            data = {
-                'model': 'gpt-4o-mini',
-                'messages': [
-                    {'role': 'system', 'content': system_prompt},
-                    {'role': 'user', 'content': user_prompt}
-                ],
-                'temperature': 0.7,
-                'max_tokens': 2000
-            }
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'assistant', 'content': json.dumps([example_obj])},
+                {'role': 'user', 'content': user_prompt}
+            ]
 
-            if not requests:
-                raise RuntimeError('requests library not available in environment')
-            resp = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=data, timeout=30)
-            if resp.status_code == 200:
-                body = resp.json()
+            resp = None
+            backoff = 1
+            for attempt in range(4):
+                try:
+                    resp = openai.ChatCompletion.create(model=openai_model, messages=messages, temperature=float(openai_temp), max_tokens=2500)
+                    if resp and resp.get('choices'):
+                        break
+                except Exception as e:
+                    print('OpenAI SDK attempt error:', e)
+                sleep(backoff)
+                backoff = min(backoff * 2, 8)
+
+            if resp and resp.get('choices'):
                 text = ''
-                # Extract assistant content
-                for choice in body.get('choices', []):
+                for choice in resp.get('choices', []):
+                    # choice may contain 'message' with 'content'
                     msg = choice.get('message') or choice.get('text')
                     if isinstance(msg, dict):
-                        text += msg.get('content','')
+                        text += msg.get('content', '')
                     elif isinstance(msg, str):
                         text += msg
 
-                # Try to parse JSON from the model output
+                # Try to extract JSON array robustly
+                arr = []
                 try:
                     arr = json.loads(text)
-                    if isinstance(arr, list):
-                        generated = arr[:total_q]
                 except Exception:
-                    # Attempt to extract JSON substring
-                    m = re.search(r'(\[\s*\{.*\}\s*\])', text, re.S)
+                    m = re.search(r'(\[\s*\{[\s\S]*?\}\s*\])', text)
                     if m:
                         try:
                             arr = json.loads(m.group(1))
-                            generated = arr[:total_q]
                         except Exception:
-                            generated = []
+                            arr = []
+
+                # Basic post-processing: ensure options are unique and non-empty
+                clean_arr = []
+                for it in arr:
+                    if not isinstance(it, dict):
+                        continue
+                    for k, v in list(it.items()):
+                        if isinstance(v, str):
+                            it[k] = v.strip()
+                    if not it.get('option_a') or not it.get('option_b'):
+                        continue
+                    opts = [it.get('option_a', ''), it.get('option_b', ''), it.get('option_c', ''), it.get('option_d', ''), it.get('option_e', '')]
+                    seen = set()
+                    unique_opts = []
+                    for o in opts:
+                        if not o:
+                            unique_opts.append('')
+                            continue
+                        if o in seen:
+                            o = o + ' '
+                        seen.add(o)
+                        unique_opts.append(o)
+                    it['option_a'], it['option_b'], it['option_c'], it['option_d'], it['option_e'] = unique_opts[:5]
+                    clean_arr.append(it)
+
+                generated = _validate_gen_array(clean_arr, total_q)
             else:
-                print('OpenAI call failed:', resp.status_code, resp.text)
+                print('OpenAI generation failed after retries (SDK)')
         except Exception as e:
-            print('OpenAI request error:', e)
+            print('OpenAI integration error:', e)
 
     # If no OpenAI key or generation failed, fall back to simple template generator
     if not generated:
@@ -2214,23 +3693,51 @@ def commit_generated_questions():
         return redirect(url_for('generate_questions'))
 
     added = 0
+    # Re-validate items before saving to DB
+    def _clean_item(it):
+        if not isinstance(it, dict):
+            return None
+        qtext = (it.get('question_text') or '').strip()
+        if not qtext:
+            return None
+        a = (it.get('option_a') or '').strip()
+        b = (it.get('option_b') or '').strip()
+        if not a or not b:
+            return None
+        ca = (it.get('correct_answer') or '').upper().strip()
+        if ca not in ['A','B','C','D','E']:
+            ca = 'A'
+        try:
+            marks = int(it.get('marks') or 1)
+        except Exception:
+            marks = 1
+        return {
+            'question_text': qtext[:2000],
+            'option_a': a[:500], 'option_b': b[:500],
+            'option_c': (it.get('option_c') or '')[:500], 'option_d': (it.get('option_d') or '')[:500], 'option_e': (it.get('option_e') or '')[:500],
+            'correct_answer': ca, 'is_theory': bool(it.get('is_theory', False)), 'theory_text': (it.get('theory_text') or None),
+            'question_image': (it.get('question_image') or None), 'explanation': (it.get('explanation') or '')[:1000], 'marks': marks
+        }
+
     for item in items:
         try:
-            ca = (item.get('correct_answer') or '').upper().strip()
-            if not ca or ca not in ['A','B','C','D','E']:
-                ca = 'A'
-
+            clean = _clean_item(item)
+            if not clean:
+                continue
             q = Question(
                 subject_id=subject_id,
-                question_text=item.get('question_text') or '',
-                option_a=item.get('option_a') or '',
-                option_b=item.get('option_b') or '',
-                option_c=item.get('option_c') or '',
-                option_d=item.get('option_d') or '',
-                option_e=item.get('option_e') or '',
-                correct_answer=ca,
-                explanation=item.get('explanation') or '',
-                marks=int(item.get('marks') or 1),
+                question_text=clean['question_text'],
+                option_a=clean['option_a'],
+                option_b=clean['option_b'],
+                option_c=clean['option_c'],
+                option_d=clean['option_d'],
+                option_e=clean['option_e'],
+                correct_answer=clean['correct_answer'],
+                is_theory=clean['is_theory'],
+                theory_text=clean['theory_text'],
+                question_image=clean['question_image'],
+                explanation=clean['explanation'],
+                marks=clean['marks'],
                 created_by=session['user_id']
             )
             db.session.add(q)
@@ -2272,7 +3779,9 @@ def diagnostics():
                          total_subjects=len(subjects_for_current_user()))
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['xlsx', 'xls']
+    # Allow Excel files, images and common recording/video formats
+    allowed = {'xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'webm', 'mp4', 'mkv', 'mov'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
 
 @app.route('/admin/exams')
 def admin_exams():
@@ -2282,6 +3791,142 @@ def admin_exams():
     
     exams = exams_for_current_user()
     return render_template('admin/exams.html', exams=exams)
+
+
+@app.route('/student/upload_passport', methods=['POST'])
+def upload_passport():
+    if 'user_id' not in session:
+        flash('Not authenticated', 'danger')
+        return redirect(url_for('login'))
+    if 'passport' not in request.files:
+        flash('No file provided', 'danger')
+        return redirect(request.referrer or url_for('student_dashboard'))
+    f = request.files['passport']
+    if f.filename == '':
+        flash('No file selected', 'danger')
+        return redirect(request.referrer or url_for('student_dashboard'))
+    if not allowed_file(f.filename):
+        flash('Unsupported file type', 'danger')
+        return redirect(request.referrer or url_for('student_dashboard'))
+    fn = secure_filename(f.filename)
+    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+    os.makedirs(dest, exist_ok=True)
+    path = os.path.join(dest, fn)
+    f.save(path)
+    try:
+        user = User.query.get(session['user_id'])
+        user.passport_filename = os.path.relpath(path)
+        db.session.commit()
+        flash('Passport uploaded', 'success')
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        flash('Failed to save passport', 'danger')
+    return redirect(request.referrer or url_for('student_dashboard'))
+
+
+@app.route('/admin/upload_recording/<int:session_id>', methods=['POST'])
+def admin_upload_recording(session_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return {'error':'Access denied'}, 403
+    if 'recording' not in request.files:
+        return {'error':'No file'}, 400
+    f = request.files['recording']
+    if f.filename == '':
+        return {'error':'No filename'}, 400
+    fn = secure_filename(f.filename)
+    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'recordings')
+    os.makedirs(dest, exist_ok=True)
+    path = os.path.join(dest, fn)
+    f.save(path)
+    try:
+        rec = Recording(exam_session_id=session_id, filename=os.path.relpath(path))
+        db.session.add(rec)
+        db.session.commit()
+        return {'status':'ok','recording_id':rec.id}
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return {'error':str(e)}, 500
+
+
+@app.route('/student/upload_recording/<int:session_id>', methods=['POST'])
+def student_upload_recording(session_id):
+    if 'user_id' not in session:
+        return {'error':'Not authenticated'}, 403
+    exam_session = ExamSession.query.get(session_id)
+    if not exam_session or exam_session.student_id != session['user_id']:
+        return {'error':'Access denied'}, 403
+    if 'recording' not in request.files:
+        return {'error':'No file'}, 400
+    f = request.files['recording']
+    if f.filename == '':
+        return {'error':'No filename'}, 400
+    fn = secure_filename(f.filename)
+    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'recordings')
+    os.makedirs(dest, exist_ok=True)
+    path = os.path.join(dest, fn)
+    f.save(path)
+    try:
+        rec = Recording(exam_session_id=session_id, filename=os.path.relpath(path))
+        db.session.add(rec)
+        db.session.commit()
+        return {'status':'ok','recording_id':rec.id}
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return {'error':str(e)}, 500
+
+
+@app.route('/admin/note', methods=['POST'])
+def add_note():
+    if 'user_id' not in session or not session.get('is_superadmin'):
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    content = request.form.get('content','').strip()
+    if not content:
+        flash('Note cannot be empty', 'warning')
+        return redirect(url_for('super_admin_6869'))
+    n = Note(created_by=session['user_id'], content=content)
+    db.session.add(n)
+    db.session.commit()
+    flash('Note saved', 'success')
+    return redirect(url_for('super_admin_6869'))
+
+
+@app.route('/admin/appointment', methods=['POST'])
+def add_appointment():
+    if 'user_id' not in session or not session.get('is_superadmin'):
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    title = request.form.get('title','').strip()
+    when_raw = request.form.get('when','').strip()
+    notes = request.form.get('notes','').strip()
+    if not title or not when_raw:
+        flash('Title and datetime are required', 'warning')
+        return redirect(url_for('super_admin_6869'))
+    try:
+        when_dt = datetime.fromisoformat(when_raw)
+    except Exception:
+        flash('Invalid datetime format, use ISO format', 'danger')
+        return redirect(url_for('super_admin_6869'))
+    ap = Appointment(title=title, when=when_dt, notes=notes, created_by=session['user_id'])
+    db.session.add(ap)
+    db.session.commit()
+    flash('Appointment saved', 'success')
+    return redirect(url_for('super_admin_6869'))
+
+
+@app.route('/download/result/<int:session_id>')
+def download_result(session_id):
+    # alias to existing PDF endpoint that was previously used by UI
+    return redirect(url_for('result_pdf', session_id=session_id))
 
 
 @app.route('/admin/exam/<int:exam_id>')
@@ -2309,7 +3954,76 @@ def admin_view_exam(exam_id):
 
     questions = Question.query.filter_by(subject_id=subj_id).all()
 
-    return render_template('admin/exam_detail.html', exam=exam, questions=questions)
+    # Fetch recordings related to this exam (via exam sessions)
+    recordings = []
+    try:
+        sessions = ExamSession.query.filter_by(exam_id=exam.id).all()
+        sids = [s.id for s in sessions]
+        if sids:
+            raw_recs = Recording.query.filter(Recording.exam_session_id.in_(sids)).all()
+            for rec in raw_recs:
+                sess = ExamSession.query.get(rec.exam_session_id) if rec.exam_session_id else None
+                student = None
+                if sess:
+                    student = User.query.get(sess.student_id)
+                import ntpath
+                basename = ntpath.basename(rec.filename or '')
+                recordings.append({
+                    'id': rec.id,
+                    'filename': rec.filename,
+                    'filename_basename': basename,
+                    'uploaded_at': rec.uploaded_at,
+                    'student_username': getattr(student, 'username', None) if student else None,
+                    'student_full_name': getattr(student, 'full_name', None) if student else None,
+                    'session_id': rec.exam_session_id
+                })
+    except Exception:
+        recordings = []
+
+    return render_template('admin/exam_detail.html', exam=exam, questions=questions, recordings=recordings)
+
+
+
+@app.route('/admin/exam/<int:exam_id>/edit', methods=['GET', 'POST'])
+def admin_edit_exam(exam_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+    exam = Exam.query.get_or_404(exam_id)
+    # Only allow admins from same school (unless superadmin)
+    try:
+        if not session.get('is_superadmin'):
+            creator = User.query.get(exam.created_by)
+            if creator and creator.school_id and int(creator.school_id) != int(_get_effective_school_id()):
+                flash('Access denied', 'danger')
+                return redirect(url_for('admin_exams'))
+    except Exception:
+        pass
+
+    if request.method == 'POST':
+        # Allow upload of a single image while leaving other exam fields unchanged
+        if 'exam_image' in request.files:
+            f = request.files['exam_image']
+            if f and f.filename:
+                try:
+                    fname = secure_filename(f.filename)
+                    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'exam_images')
+                    os.makedirs(dest, exist_ok=True)
+                    path = os.path.join(dest, fname)
+                    f.save(path)
+                    exam.exam_image = os.path.relpath(path)
+                    db.session.add(exam)
+                    db.session.commit()
+                    flash('Exam image uploaded', 'success')
+                except Exception as e:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+                    flash('Failed to upload image: ' + str(e), 'danger')
+        return redirect(url_for('admin_view_exam', exam_id=exam.id))
+
+    return render_template('admin/edit_exam.html', exam=exam)
 
 
 @app.route('/admin/exam/<int:exam_id>/codes', methods=['GET', 'POST'])
@@ -2717,7 +4431,16 @@ def student_dashboard():
         school_obj = None
 
     schools = get_schools_safe()
-    return render_template('student/dashboard.html', exams=exams, completed_exams=completed_exams, school=school_obj, schools=schools)
+    # Compute passport URL if available
+    passport_url = None
+    try:
+        if student and getattr(student, 'passport_filename', None):
+            pf = os.path.basename(student.passport_filename)
+            passport_url = url_for('serve_passport', filename=pf)
+    except Exception:
+        passport_url = None
+
+    return render_template('student/dashboard.html', exams=exams, completed_exams=completed_exams, school=school_obj, schools=schools, student=student, passport_url=passport_url)
 
 
 @app.route('/start', methods=['GET'])
@@ -3440,16 +5163,86 @@ def result_pdf(session_id):
             return Response(rendered, mimetype='text/html', headers={
                 'Content-Disposition': f'attachment; filename=result_{session_id}.html'
             })
+    # Attempt to generate a simple PDF using ReportLab as a pure-Python fallback
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        bio = BytesIO()
+        c = canvas.Canvas(bio, pagesize=letter)
+        width, height = letter
+        margin = 40
+        y = height - margin
+        # Header
+        try:
+            student = User.query.get(exam_session.student_id)
+            student_name = student.full_name or student.username
+        except Exception:
+            student_name = 'Student'
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(margin, y, f'Result for: {student_name} (Session {session_id})')
+        y -= 24
+        c.setFont('Helvetica', 10)
+        c.drawString(margin, y, f'Exam: {exam_session.exam.title if exam_session.exam else "-"}    Score: {exam_session.score or 0}')
+        y -= 18
+        c.drawString(margin, y, f'Time used: {time_used_str}')
+        y -= 24
 
-    # No pdfkit or wkhtmltopdf - return printable HTML as fallback (downloadable)
-    flash('PDF generation not available on server; download/print the HTML page.', 'warning')
-    return Response(rendered, mimetype='text/html', headers={
-        'Content-Disposition': f'attachment; filename=result_{session_id}.html'
-    })
+        # Questions list (truncate long texts)
+        for idx, q in enumerate(questions, start=1):
+            qtext = (q['question'].question_text[:300] + '...') if q['question'] and getattr(q['question'], 'question_text', None) and len(q['question'].question_text) > 300 else (q['question'].question_text if q['question'] else '')
+            sel = q.get('selected_answer') or ''
+            corr = 'Yes' if q.get('is_correct') else 'No'
+            line = f"{idx}. {qtext} -- Selected: {sel} -- Correct: {corr}"
+            # Wrap lines if necessary
+            max_chars = 100
+            parts = [line[i:i+max_chars] for i in range(0, len(line), max_chars)]
+            for p in parts:
+                if y < margin + 40:
+                    c.showPage()
+                    y = height - margin
+                    c.setFont('Helvetica', 10)
+                c.drawString(margin, y, p)
+                y -= 14
+
+        c.showPage()
+        c.save()
+        bio.seek(0)
+        return Response(bio.read(), mimetype='application/pdf', headers={
+            'Content-Disposition': f'attachment; filename=result_{session_id}.pdf'
+        })
+    except Exception as e:
+        print('ReportLab PDF generation failed:', e)
+        flash('PDF generation not available on server; download/print the HTML page.', 'warning')
+        return Response(rendered, mimetype='text/html', headers={
+            'Content-Disposition': f'attachment; filename=result_{session_id}.html'
+        })
 
 if __name__ == '__main__':
     try:
         init_db()
     except Exception as e:
         print('init_db failed:', e)
+    # Load persistent settings from DB into app.config (if present)
+    try:
+        # ensure tables exist before querying
+        try:
+            val = get_setting('openai_api_key')
+            if val:
+                app.config['OPENAI_API_KEY'] = val
+        except Exception:
+            pass
+        try:
+            val = get_setting('openai_model')
+            if val:
+                app.config['OPENAI_MODEL'] = val
+        except Exception:
+            pass
+        try:
+            val = get_setting('openai_temperature')
+            if val:
+                app.config['OPENAI_TEMPERATURE'] = float(val)
+        except Exception:
+            pass
+    except Exception:
+        pass
     app.run(debug=True)

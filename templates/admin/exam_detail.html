@@ -36,7 +36,36 @@
     {% endfor %}
     </ul>
 
-    <a href="{{ url_for('admin_exams') }}" class="btn btn-secondary">Back to Exams</a>
+        <hr />
+        <h4>Exam Image</h4>
+        {% if exam.exam_image %}
+            <div><img src="{{ url_for('serve_uploads', filename=exam.exam_image) }}" alt="Exam image" style="max-width:300px; height:auto;" /></div>
+            <div class="mt-2">
+                <a href="{{ url_for('admin_edit_exam', exam_id=exam.id) }}" class="btn btn-sm btn-outline-primary">Replace Image</a>
+            </div>
+        {% else %}
+            <div class="text-muted">No exam image uploaded.</div>
+            <div class="mt-2"><a href="{{ url_for('admin_edit_exam', exam_id=exam.id) }}" class="btn btn-sm btn-primary">Upload Image</a></div>
+        {% endif %}
+
+        <hr />
+        <h4>Recorded Sessions</h4>
+        {% if recordings %}
+            <ul>
+                {% for r in recordings %}
+                    <li>
+                        Student: {{ r.student_full_name or r.student_username or 'Unknown' }}
+                        | Session: {{ r.session_id }}
+                        | Uploaded: {{ r.uploaded_at.strftime('%Y-%m-%d %H:%M') if r.uploaded_at else '' }}
+                        <a href="{{ url_for('serve_recording', filename=r.filename_basename) }}" class="ms-2">View</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="text-muted">No recordings found for this exam.</div>
+        {% endif %}
+
+        <a href="{{ url_for('admin_exams') }}" class="btn btn-secondary">Back to Exams</a>
 </div>
 </body>
 </html>

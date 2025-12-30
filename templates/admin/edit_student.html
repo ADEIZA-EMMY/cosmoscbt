@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+  <h3>Edit Student</h3>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Username</label>
+      <input class="form-control" value="{{ student.username }}" disabled>
+    </div>
+    <div class="mb-3">
+      <label for="full_name" class="form-label">Full name</label>
+      <input id="full_name" name="full_name" class="form-control" value="{{ student.full_name or '' }}">
+    </div>
+    <div class="mb-3">
+      <label for="student_class" class="form-label">Class</label>
+      <input id="student_class" name="student_class" class="form-control" value="{{ student.student_class or '' }}">
+      {% if classes %}
+        <small class="text-muted">Suggested: {{ classes|join(', ') }}</small>
+      {% endif %}
+    </div>
+    <div class="mb-3">
+      <label for="gender" class="form-label">Gender</label>
+      <select id="gender" name="gender" class="form-select">
+        <option value="">Prefer not to say</option>
+        <option value="Male" {% if student.gender == 'Male' %}selected{% endif %}>Male</option>
+        <option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Female</option>
+        <option value="Other" {% if student.gender == 'Other' %}selected{% endif %}>Other</option>
+      </select>
+    </div>
+    {% if schools %}
+    <div class="mb-3">
+      <label for="school_id" class="form-label">School</label>
+      <select id="school_id" name="school_id" class="form-select">
+        <option value="">(none)</option>
+        {% for s in schools %}
+          <option value="{{ s.id }}" {% if student.school_id and student.school_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="mb-3">
+      <label for="passport" class="form-label">Passport / Photo</label>
+      <input id="passport" name="passport" type="file" class="form-control" accept="image/*" capture="environment">
+      <input type="hidden" id="passport_data" name="passport_data">
+      <div class="mt-2">
+        <button type="button" id="open_camera" class="btn btn-outline-primary btn-sm">Use Camera</button>
+        <span id="camera_preview" style="display:inline-block;margin-left:8px"></span>
+      </div>
+      <div id="camera_container" style="display:none;margin-top:8px">
+        <video id="camera_video" autoplay playsinline style="max-width:100%;height:auto;border:1px solid #ccc"></video>
+        <div class="mt-2">
+          <button type="button" id="capture_btn" class="btn btn-primary btn-sm">Capture</button>
+          <button type="button" id="close_camera" class="btn btn-secondary btn-sm">Close</button>
+        </div>
+      </div>
+      {% if student.passport_filename %}
+        <div class="mt-2">
+          <img src="{{ url_for('serve_passport', filename=student.passport_filename.split('/')[-1]) }}" alt="Passport" style="width:96px;height:96px;object-fit:cover;border:1px solid #ddd;" />
+        </div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary">Save</button>
+      <a href="{{ url_for('admin_students') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+<script>
+// Camera capture helper for admin edit student
+;(function(){
+  function init(){
+    const openBtn = document.getElementById('open_camera');
+    const closeBtn = document.getElementById('close_camera');
+    const captureBtn = document.getElementById('capture_btn');
+    const video = document.getElementById('camera_video');
+    const container = document.getElementById('camera_container');
+    const preview = document.getElementById('camera_preview');
+    const hidden = document.getElementById('passport_data');
+    let stream = null;
+    if(!openBtn) return;
+    openBtn.addEventListener('click', async ()=>{
+      try{
+        stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+        video.srcObject = stream;
+        container.style.display = '';
+      }catch(e){ alert('Unable to access camera: '+e.message); }
+    });
+    closeBtn && closeBtn.addEventListener('click', ()=>{
+      if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+      container.style.display = 'none';
+    });
+    captureBtn && captureBtn.addEventListener('click', ()=>{
+      try{
+        const w = video.videoWidth || 640; const h = video.videoHeight || 480;
+        const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(video,0,0,w,h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        hidden.value = dataUrl;
+        preview.innerHTML = '<img src="'+dataUrl+'" style="width:96px;height:96px;object-fit:cover;border:1px solid #ddd;" />';
+        if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+        container.style.display = 'none';
+      }catch(e){ alert('Capture failed: '+e.message); }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>

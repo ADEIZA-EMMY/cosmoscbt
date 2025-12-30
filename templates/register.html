@@ -126,7 +126,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST">
+        <form method="POST" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="full_name">Full Name</label>
                 <input 
@@ -168,6 +168,46 @@
                     placeholder="Enter 10-digit school access code"
                     required
                 >
+            </div>
+            <div class="form-group">
+                <label for="student_class">Class / Level</label>
+                <select id="student_class" name="student_class">
+                    <option value="">Select class (optional)</option>
+                    {% if classes %}
+                        {% for cl in classes %}
+                            <option value="{{ cl }}">{{ cl }}</option>
+                        {% endfor %}
+                    {% else %}
+                        <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+                        <option>SS1</option><option>SS2</option><option>SS3</option>
+                        <option>BASIC1</option><option>BASIC2</option><option>BASIC3</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="gender">Gender</label>
+                <select id="gender" name="gender">
+                    <option value="">Prefer not to say</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="passport">Passport / Profile Photo (optional)</label>
+                <input type="file" id="passport" name="passport" accept="image/*" capture="environment">
+                <input type="hidden" id="passport_data" name="passport_data">
+                <div class="mt-2">
+                    <button type="button" id="open_camera" class="btn btn-outline-primary btn-sm">Use Camera</button>
+                    <span id="camera_preview" style="display:inline-block;margin-left:8px"></span>
+                </div>
+                <div id="camera_container" style="display:none;margin-top:8px">
+                    <video id="camera_video" autoplay playsinline style="max-width:100%;height:auto;border:1px solid #ccc"></video>
+                    <div class="mt-2">
+                        <button type="button" id="capture_btn" class="btn btn-primary btn-sm">Capture</button>
+                        <button type="button" id="close_camera" class="btn btn-secondary btn-sm">Close</button>
+                    </div>
+                </div>
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
@@ -230,5 +270,54 @@
         } catch (e) { console.warn('toggle error', e); }
     });
     </script>
-</body>
-</html>
+    <script>
+    // Camera capture helper (works on mobile and desktop with camera)
+    ;(function(){
+        function init(containerId){
+            const openBtn = document.getElementById('open_camera');
+            const closeBtn = document.getElementById('close_camera');
+            const captureBtn = document.getElementById('capture_btn');
+            const video = document.getElementById('camera_video');
+            const container = document.getElementById('camera_container');
+            const preview = document.getElementById('camera_preview');
+            const hidden = document.getElementById('passport_data');
+            let stream = null;
+            if(!openBtn) return;
+            openBtn.addEventListener('click', async ()=>{
+                try{
+                    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+                    video.srcObject = stream;
+                    container.style.display = '';
+                }catch(e){
+                    alert('Unable to access camera: '+e.message);
+                }
+            });
+            closeBtn && closeBtn.addEventListener('click', ()=>{
+                if(stream){
+                    stream.getTracks().forEach(t=>t.stop());
+                    stream = null;
+                }
+                container.style.display = 'none';
+            });
+            captureBtn && captureBtn.addEventListener('click', ()=>{
+                try{
+                    const w = video.videoWidth || 640;
+                    const h = video.videoHeight || 480;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video,0,0,w,h);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    hidden.value = dataUrl;
+                    preview.innerHTML = '<img src="'+dataUrl+'" style="width:64px;height:64px;object-fit:cover;border:1px solid #ddd;" />';
+                    // stop camera
+                    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+                    container.style.display = 'none';
+                }catch(e){ alert('Capture failed: '+e.message); }
+            });
+        }
+        document.addEventListener('DOMContentLoaded', ()=> init('camera_container'));
+    })();
+    </script>
+    </body>
+    </html>

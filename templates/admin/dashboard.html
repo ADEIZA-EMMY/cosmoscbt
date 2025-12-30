@@ -106,6 +106,35 @@
                     </div>
                 </div>
             </div>
+            <!-- Recent Recordings -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Recent Student Recordings</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if recordings %}
+                                <ul class="list-group">
+                                {% for r in recordings %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ r.student_full_name or r.student_username or 'Unknown' }}</strong>
+                                            <div class="text-muted">Exam ID: {{ r.exam_id or 'N/A' }} — Uploaded: {{ r.uploaded_at.strftime('%Y-%m-%d %H:%M') if r.uploaded_at else '' }}</div>
+                                        </div>
+                                        <div>
+                                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('serve_recording', filename=(r.filename_basename if r.filename_basename is defined else (r.filename.split('/')[-1])) ) }}">View</a>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                <div class="text-muted">No recent recordings.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 </div>
