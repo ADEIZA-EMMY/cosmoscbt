@@ -33,7 +33,14 @@ from sqlalchemy.exc import OperationalError
 app = Flask(__name__)
 application = app
 app.config['SECRET_KEY'] = 'your-secret-key-here'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlite:///cbt.db'
+# Database URL resolution:
+# - By default the app uses the env var `DATABASE_URL` (e.g. Postgres on Heroku),
+#   otherwise falls back to a local SQLite file `cbt.db`.
+# - Set env `FORCE_SQLITE=1` to force using SQLite even if `DATABASE_URL` is present.
+if os.environ.get('FORCE_SQLITE') == '1':
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLITE_URL') or 'sqlite:///cbt.db'
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or os.environ.get('SQLITE_URL') or 'sqlite:///cbt.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size

@@ -16,3 +16,8 @@ build/
 \.DS_Store
 __pycache__/
 .venv/
+
+# If you want to commit the project's SQLite file to the repo (not recommended for large
+# or sensitive data), negate the global *.db rule for the specific DB filename(s).
+!cbt.db
+!instance/*.db
