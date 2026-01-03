@@ -2534,6 +2534,21 @@ def admin_add_student():
         return redirect(url_for('login'))
 
     if request.method == 'POST':
+        # Determine admin's school and available classes early so error paths can render template
+        try:
+            admin_school_id = None
+            if session.get('is_superadmin'):
+                admin_school_id = None
+            else:
+                admin_user = User.query.get(session.get('user_id'))
+                admin_school_id = admin_user.school_id if admin_user else None
+        except Exception:
+            admin_school_id = None
+        try:
+            classes = classes_for_school(admin_school_id)
+        except Exception:
+            classes = []
+
         username = request.form.get('username', '').strip()
         full_name = request.form.get('full_name', '').strip()
         password = request.form.get('password', '').strip()
@@ -2599,30 +2614,34 @@ def admin_add_student():
             except Exception:
                 pass
         # Assign the student to the admin's school (superadmin may provide explicit school_id)
-        try:
-            if session.get('is_superadmin'):
-                sid = request.form.get('school_id')
-                if sid:
+        if session.get('is_superadmin'):
+            sid = request.form.get('school_id')
+            if sid:
+                try:
                     user.school_id = int(sid)
-                else:
+                except Exception:
                     user.school_id = None
             else:
-                # regular admin: use their own user.school_id (authoritative)
-                admin_user = User.query.get(session.get('user_id'))
-                if admin_user and admin_user.school_id:
+                user.school_id = None
+        else:
+            # regular admin: use their own user.school_id (authoritative)
+            admin_user = User.query.get(session.get('user_id'))
+            if admin_user and admin_user.school_id:
+                try:
                     user.school_id = int(admin_user.school_id)
-                else:
-                    # If admin has no assigned school, deny creation to avoid cross-school ambiguity
-                    flash('Your account is not associated with a school. Contact superadmin to assign one.', 'danger')
-                    return render_template('admin/add_student.html')
-        except Exception:
-            pass
+                except Exception:
+                    user.school_id = None
+            else:
+                flash('Your account is not associated with a school. Contact superadmin to assign one.', 'danger')
+                return render_template('admin/add_student.html', classes=classes)
+
         db.session.add(user)
         try:
             db.session.commit()
-        except Exception:
+        except Exception as e:
             db.session.rollback()
-            flash('Failed to save student', 'danger')
+            print('Failed to save student:', e)
+            flash('Failed to save student: ' + (str(e) or 'database error'), 'danger')
             return render_template('admin/add_student.html', classes=classes)
 
         flash(f'Student {username} created successfully', 'success')
