@@ -407,6 +407,8 @@ class Answer(db.Model):
     question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
     selected_answer = db.Column(db.String(1))
     is_correct = db.Column(db.Boolean)
+    # For theory/essay questions store the free-text response here
+    text_response = db.Column(db.Text, nullable=True)
 
 
 class ExamAccessCode(db.Model):
@@ -5284,7 +5286,27 @@ def admin_results():
     except Exception:
         exam_sessions = ExamSession.query.filter_by(status='completed').all()
     subjects = subjects_for_current_user()
-    return render_template('admin/results.html', exam_sessions=exam_sessions, subjects=subjects)
+
+    # Pre-fetch answers per session so admin UI can show theory responses for manual marking
+    answers_by_session = {}
+    try:
+        for s in exam_sessions:
+            raw_answers = Answer.query.filter_by(exam_session_id=s.id).order_by(Answer.id).all()
+            answers_list = []
+            for a in raw_answers:
+                q = Question.query.get(a.question_id)
+                answers_list.append({
+                    'question': q,
+                    'selected_answer': a.selected_answer,
+                    'is_correct': a.is_correct,
+                    'text_response': getattr(a, 'text_response', None),
+                    'marks': getattr(q, 'marks', None)
+                })
+            answers_by_session[s.id] = answers_list
+    except Exception:
+        answers_by_session = {}
+
+    return render_template('admin/results.html', exam_sessions=exam_sessions, subjects=subjects, answers_by_session=answers_by_session)
 
 
 @app.route('/admin/results/export_subject', methods=['POST'])
@@ -5353,6 +5375,39 @@ def admin_export_results_by_subject():
 
     filename = f"results_{subject.name.replace(' ', '_')}.xlsx"
     return send_file(bio, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=filename)
+
+
+@app.route('/admin/session/<int:session_id>/print_theory')
+def admin_print_theory(session_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    exam_session = ExamSession.query.get_or_404(session_id)
+    # Access control: only admins from same school or superadmin
+    try:
+        if not session.get('is_superadmin'):
+            creator = User.query.get(exam_session.exam.created_by)
+            my_school = _get_session_school_id()
+            if creator and creator.school_id and my_school and int(creator.school_id) != int(my_school):
+                flash('Access denied to that exam session', 'danger')
+                return redirect(url_for('admin_results'))
+    except Exception:
+        pass
+
+    # Fetch theory answers only
+    raw_answers = Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all()
+    theory_answers = []
+    for a in raw_answers:
+        q = Question.query.get(a.question_id)
+        if q and getattr(q, 'is_theory', False):
+            theory_answers.append({
+                'question_text': getattr(q, 'question_text', ''),
+                'response': getattr(a, 'text_response', '')
+            })
+
+    student = User.query.get(exam_session.student_id)
+    return render_template('admin/theory_print.html', exam_session=exam_session, student=student, theory_answers=theory_answers)
 
 # Student Routes
 @app.route('/student/dashboard')
@@ -5905,6 +5960,7 @@ def get_question(session_id, question_index):
             'text': question.question_text,
             'options': options,
             'selected_answer': answer.selected_answer,
+            'text_response': getattr(answer, 'text_response', None),
             'marks': question.marks,
             'is_theory': bool(getattr(question, 'is_theory', False)),
             'image_url': image_url
@@ -5932,12 +5988,27 @@ def save_answer(session_id):
         return {'error': 'Invalid question index'}, 404
     
     answer_record = answers[question_index]
-    # Normalize the student's answer
+    # If this question is a theory/essay question, store the raw text in text_response
+    question = Question.query.get(answer_record.question_id)
+    try:
+        is_theory_q = bool(getattr(question, 'is_theory', False))
+    except Exception:
+        is_theory_q = False
+
+    if is_theory_q:
+        # Store original text (do not normalize case) for manual marking
+        answer_record.text_response = None if answer is None else str(answer).strip()
+        # Clear selected_answer/is_correct since marking is manual
+        answer_record.selected_answer = None
+        answer_record.is_correct = None
+        db.session.commit()
+        return {'status': 'success'}
+
+    # Normalize the student's answer for MCQ questions
     answer_norm = '' if answer is None else str(answer).upper().strip()
     answer_record.selected_answer = answer_norm
 
     # Check if answer is correct. Support both letter (A/B/C/D/E) or full option text
-    question = Question.query.get(answer_record.question_id)
     correct_letter = (question.correct_answer or '').upper().strip()
     # Map letters to option text for fallback comparison
     opts = {
@@ -5958,9 +6029,11 @@ def save_answer(session_id):
         is_correct = (sel_text == correct_text)
 
     answer_record.is_correct = bool(is_correct)
-    
+    # Clear any previous text_response for MCQ
+    answer_record.text_response = None
+
     db.session.commit()
-    
+
     return {'status': 'success'}
 
 @app.route('/api/exam/<int:session_id>/submit', methods=['POST'])
@@ -6284,5 +6357,24 @@ if __name__ == '__main__':
             pass
     except Exception:
         pass
+
+        # Ensure Answer table has text_response column for storing theory answers
+        try:
+            try:
+                res = db.session.execute("PRAGMA table_info('answer')").fetchall()
+                cols = [r[1] for r in res]
+            except Exception:
+                cols = None
+            if cols is None or 'text_response' not in cols:
+                try:
+                    db.engine.execute("ALTER TABLE answer ADD COLUMN text_response TEXT")
+                    print('Added answer.text_response column at startup')
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     app.run(debug=True)
