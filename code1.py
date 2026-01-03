@@ -338,6 +338,48 @@ def _ensure_schema():
 
 _ensure_schema()
 
+# Auto-create or update superadmin from environment variable at startup.
+try:
+    SA_PASS = os.environ.get('SUPERADMIN_PASSWORD')
+    if SA_PASS:
+        with app.app_context():
+            try:
+                admin = User.query.filter_by(username='admin').first()
+                if not admin:
+                    admin = User(username='admin', full_name='Super Admin', role='admin')
+                    admin.set_password(SA_PASS)
+                    admin.is_superadmin = True
+                    db.session.add(admin)
+                    db.session.commit()
+                    print('Created admin user from SUPERADMIN_PASSWORD')
+                else:
+                    admin.set_password(SA_PASS)
+                    admin.is_superadmin = True
+                    db.session.commit()
+                    print('Updated admin user password from SUPERADMIN_PASSWORD')
+            except Exception as _e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+except Exception:
+    pass
+
+# Ensure all DB tables exist (fallback for first-run on new DBs)
+try:
+    with app.app_context():
+        try:
+            db.create_all()
+            print('Ensured DB tables via db.create_all()')
+        except Exception as _e:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            print('db.create_all() failed at startup:', _e)
+except Exception:
+    pass
+
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
