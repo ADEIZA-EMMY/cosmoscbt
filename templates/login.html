@@ -143,17 +143,19 @@
         {% endwith %}
 
         <form method="POST">
-            {% if schools %}
             <div class="form-group">
                 <label for="school_id">School (optional for superadmin)</label>
-                <select id="school_id" name="school_id">
-                    <option value="">-- Select School --</option>
-                    {% for s in schools %}
-                        <option value="{{ s.id }}">{{ s.name }}</option>
-                    {% endfor %}
+                <select id="school_id" name="school_id" {% if not schools %}disabled{% endif %}>
+                    {% if schools %}
+                        <option value="">-- Select School --</option>
+                        {% for s in schools %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">No schools configured</option>
+                    {% endif %}
                 </select>
             </div>
-            {% endif %}
             <!-- role selection removed: backend determines role from account -->
 
             <div class="form-group">
