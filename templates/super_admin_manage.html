@@ -4,6 +4,11 @@
 <div class="container mt-4">
   <h3>Superadmin — Admin Accounts (6869)</h3>
   <p>Only accessible to superadmin users.</p>
+  <div class="mb-3">
+    <a href="{{ url_for('admin_community_moderate') }}" class="btn btn-sm btn-outline-danger">
+      <i class="fas fa-comments me-1"></i> Manage Community Moderation
+    </a>
+  </div>
   <table class="table">
     <thead>
       <tr>
