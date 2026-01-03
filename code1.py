@@ -3832,7 +3832,8 @@ def community():
 
 @app.route('/admin/community/moderate', methods=['GET'])
 def admin_community_moderate():
-    if 'user_id' not in session or session.get('role') != 'admin':
+    # Only superadmins may moderate community posts
+    if 'user_id' not in session or not session.get('is_superadmin'):
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
     # Ensure moderation columns exist (fallback ALTER)
@@ -3872,14 +3873,15 @@ def admin_community_moderate():
 
 @app.route('/admin/community/<int:post_id>/delete', methods=['POST'])
 def admin_community_delete(post_id):
-    if 'user_id' not in session or session.get('role') != 'admin':
+    # Only superadmins may delete community posts
+    if 'user_id' not in session or not session.get('is_superadmin'):
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
     try:
         post = CommunityPost.query.get(post_id)
         if not post:
             flash('Post not found', 'danger')
-            return redirect(url_for('admin_community_moderate'))
+            return redirect(url_for('super_admin_6869'))
         post.is_deleted = True
         db.session.commit()
         flash('Post deleted', 'success')
@@ -3889,7 +3891,7 @@ def admin_community_delete(post_id):
         except Exception:
             pass
         flash('Failed to delete post', 'danger')
-    return redirect(url_for('admin_community_moderate'))
+    return redirect(url_for('super_admin_6869'))
 
 
 @app.route('/community/<int:post_id>/like', methods=['POST'])
@@ -5407,7 +5409,62 @@ def admin_print_theory(session_id):
             })
 
     student = User.query.get(exam_session.student_id)
-    return render_template('admin/theory_print.html', exam_session=exam_session, student=student, theory_answers=theory_answers)
+    # Try to render as PDF using ReportLab; fallback to HTML
+    try:
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        import textwrap
+
+        bio = BytesIO()
+        c = canvas.Canvas(bio, pagesize=A4)
+        width, height = A4
+        margin = 20 * mm
+        y = height - margin
+
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(margin, y, f"Theory Responses — {exam_session.exam.title}")
+        y -= 12 * mm
+
+        c.setFont('Helvetica', 10)
+        student_line = f"Student: {getattr(student, 'full_name', '')}    Class: {getattr(student, 'student_class', 'N/A')}"
+        c.drawString(margin, y, student_line)
+        y -= 8 * mm
+
+        c.setFont('Helvetica', 10)
+        for idx, t in enumerate(theory_answers, start=1):
+            q_header = f"Q{idx}. {t.get('question_text','')[:200]}"
+            lines = textwrap.wrap(q_header, 100)
+            for L in lines:
+                if y < margin + 30:
+                    c.showPage()
+                    y = height - margin
+                    c.setFont('Helvetica', 10)
+                c.drawString(margin, y, L)
+                y -= 5 * mm
+
+            # render response block
+            resp = t.get('response') or ''
+            resp_lines = textwrap.wrap(resp, 110)
+            for L in resp_lines:
+                if y < margin + 30:
+                    c.showPage()
+                    y = height - margin
+                    c.setFont('Helvetica', 10)
+                c.drawString(margin + 6 * mm, y, L)
+                y -= 5 * mm
+
+            y -= 4 * mm
+
+        c.showPage()
+        c.save()
+        bio.seek(0)
+        return Response(bio.read(), mimetype='application/pdf', headers={
+            'Content-Disposition': f'attachment; filename=theory_responses_{session_id}.pdf'
+        })
+    except Exception:
+        # Fallback to HTML rendering
+        return render_template('admin/theory_print.html', exam_session=exam_session, student=student, theory_answers=theory_answers)
 
 # Student Routes
 @app.route('/student/dashboard')
