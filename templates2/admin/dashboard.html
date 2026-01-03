@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Admin Dashboard</h2>
+    <span class="badge bg-primary">Admin Panel</span>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card card-dashboard bg-primary text-white text-center p-3">
+            <div class="card-body">
+                <h5><i class="fas fa-book fa-2x mb-2"></i></h5>
+                <h3>{{ subjects|length }}</h3>
+                <p class="mb-0">Subjects</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-dashboard bg-success text-white text-center p-3">
+            <div class="card-body">
+                <h5><i class="fas fa-file-alt fa-2x mb-2"></i></h5>
+                <h3>{{ exams|length }}</h3>
+                <p class="mb-0">Exams</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-dashboard bg-info text-white text-center p-3">
+            <div class="card-body">
+                <h5><i class="fas fa-users fa-2x mb-2"></i></h5>
+                <h3>{{ students|length }}</h3>
+                <p class="mb-0">Students</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-dashboard bg-warning text-dark text-center p-3">
+            <div class="card-body">
+                <h5><i class="fas fa-chart-line fa-2x mb-2"></i></h5>
+                <h3>{{ exams|length }}</h3>
+                <p class="mb-0">Active Exams</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0">Recent Subjects</h5>
+            </div>
+            <div class="card-body">
+                {% if subjects %}
+                <div class="list-group">
+                    {% for subject in subjects[-5:] %}
+                    <div class="list-group-item">
+                        <h6 class="mb-1">{{ subject.name }}</h6>
+                        <small class="text-muted">{{ subject.description[:100] }}{% if subject.description|length > 100 %}...{% endif %}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No subjects available</p>
+                {% endif %}
+                <a href="{{ url_for('admin_subjects') }}" class="btn btn-primary mt-3">View All Subjects</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0">Recent Exams</h5>
+            </div>
+            <div class="card-body">
+                {% if exams %}
+                <div class="list-group">
+                    {% for exam in exams[-5:] %}
+                    <div class="list-group-item">
+                        <h6 class="mb-1">{{ exam.title }}</h6>
+                        <small class="text-muted">Duration: {{ exam.duration }} mins | Marks: {{ exam.total_marks }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No exams available</p>
+                {% endif %}
+                <a href="{{ url_for('admin_exams') }}" class="btn btn-primary mt-3">View All Exams</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

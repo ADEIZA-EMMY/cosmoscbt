@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3>Superadmin — Admin Accounts (6869)</h3>
+  <p>Only accessible to superadmin users.</p>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Full Name</th>
+        <th>Restricted</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in admins %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.username }}</td>
+        <td>{{ a.full_name or '' }}</td>
+        <td>{{ 'Yes' if a.is_restricted else 'No' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('super_toggle_restrict', user_id=a.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-{{ 'success' if a.is_restricted else 'danger' }}">{{ 'Unrestrict' if a.is_restricted else 'Restrict' }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="row mt-4">
+    <div class="col-md-6">
+      <h5>Notepad</h5>
+      <form method="post" action="{{ url_for('add_note') }}">
+        <div class="mb-2">
+          <textarea name="content" class="form-control" rows="6" placeholder="Write a note for other superadmins..."></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm">Save Note</button>
+      </form>
+      <hr />
+      <div style="max-height:300px; overflow:auto;">
+        {% for n in notes %}
+        <div class="card mb-2">
+          <div class="card-body p-2 d-flex justify-content-between align-items-start">
+            <div>
+              <small class="text-muted">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</small>
+              <div class="mt-1">{{ n.content }}</div>
+            </div>
+            <div>
+              <form method="post" action="{{ url_for('delete_note', note_id=n.id) }}" onsubmit="return confirm('Delete this note?');">
+                <button class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-muted">No notes yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-md-6">
+      <h5>Calendar / Appointments</h5>
+      <form method="post" action="{{ url_for('add_appointment') }}">
+        <div class="mb-2">
+          <input name="title" class="form-control" placeholder="Appointment title" />
+        </div>
+        <div class="mb-2">
+          <input name="when" type="datetime-local" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm">Add Appointment</button>
+      </form>
+      <hr />
+      <div id="calendar" class="mb-3" style="border:1px solid #e9ecef;padding:10px;border-radius:6px;background:#fff;">
+        <!-- Simple month view will be rendered here by JS -->
+        <div id="calendar-header" class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <button id="cal-prev" class="btn btn-sm btn-outline-secondary">&lt;</button>
+            <span id="cal-month" class="mx-2 fw-bold"></span>
+            <button id="cal-next" class="btn btn-sm btn-outline-secondary">&gt;</button>
+          </div>
+          <div><button id="cal-today" class="btn btn-sm btn-outline-primary">Today</button></div>
+        </div>
+        <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
+      </div>
+
+      <div id="appointments-list">
+        <ul class="list-group">
+          {% for a in appointments %}
+          <li class="list-group-item d-flex justify-content-between align-items-start">
+            <div>
+              <strong>{{ a.title }}</strong>
+              <div class="text-muted">{{ a.when.strftime('%Y-%m-%d %H:%M') if a.when else '' }}</div>
+              <div>{{ a.notes }}</div>
+            </div>
+            <div>
+              <form method="post" action="{{ url_for('delete_appointment', appointment_id=a.id) }}" onsubmit="return confirm('Delete this appointment?');">
+                <button class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </div>
+          </li>
+          {% else %}
+          <li class="list-group-item text-muted">No appointments</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple calendar renderer — shows a grid for the current month and marks days with appointments.
+    (function(){
+      const appointments = {{ appointments|tojson | safe }} || [];
+      const calMonth = document.getElementById('cal-month');
+      const calGrid = document.getElementById('cal-grid');
+      let view = new Date();
+
+      function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+      function endOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+
+      function render(){
+        calGrid.innerHTML = '';
+        const start = startOfMonth(view);
+        const end = endOfMonth(view);
+        calMonth.textContent = view.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+        // compute day of week for first day (0=Sun)
+        const firstDow = start.getDay();
+        // fill blanks
+        for(let i=0;i<firstDow;i++){ const b=document.createElement('div'); b.innerHTML=''; calGrid.appendChild(b); }
+
+        for(let d=1; d<=end.getDate(); d++){
+          const dt = new Date(view.getFullYear(), view.getMonth(), d);
+          const cell = document.createElement('div');
+          cell.style.minHeight='80px';
+          cell.style.border='1px solid #f1f1f1';
+          cell.style.padding='6px';
+          cell.style.borderRadius='4px';
+          const dayLabel = document.createElement('div'); dayLabel.className='fw-bold'; dayLabel.textContent = d; cell.appendChild(dayLabel);
+          const iso = dt.toISOString().slice(0,10);
+          const todays = appointments.filter(a=> a.when && a.when.slice(0,10) === iso);
+          if(todays.length){
+            const badge = document.createElement('div'); badge.className='mt-1'; badge.innerHTML = `<span class="badge bg-primary">${todays.length} appt(s)</span>`;
+            cell.appendChild(badge);
+            // small list
+            const list = document.createElement('div'); list.className='mt-2 small text-muted';
+            todays.slice(0,3).forEach(t=>{ const it=document.createElement('div'); it.textContent = (t.when ? t.when.replace('T',' ').slice(0,16) : '') + ' — ' + t.title; list.appendChild(it); });
+            cell.appendChild(list);
+          }
+          cell.addEventListener('click', ()=>{
+            // scroll to appointments list and highlight items for this day
+            const isoDay = iso;
+            const items = document.querySelectorAll('#appointments-list .list-group-item');
+            items.forEach(it=> it.style.background='');
+            // highlight matching items by date string presence
+            items.forEach(it=>{ if(it.innerText.indexOf(isoDay)!==-1){ it.style.background='#fff3cd'; it.scrollIntoView({behavior:'smooth', block:'center'}); } });
+          });
+          calGrid.appendChild(cell);
+        }
+      }
+
+      document.getElementById('cal-prev').addEventListener('click', ()=>{ view = new Date(view.getFullYear(), view.getMonth()-1, 1); render(); });
+      document.getElementById('cal-next').addEventListener('click', ()=>{ view = new Date(view.getFullYear(), view.getMonth()+1, 1); render(); });
+      document.getElementById('cal-today').addEventListener('click', ()=>{ view = new Date(); render(); });
+
+      // normalize appointment times to ISO mini format on client side
+      appointments.forEach(a=>{ if(a.when){ try{ a.when = new Date(a.when).toISOString(); }catch(e){ } } });
+      render();
+    })();
+  </script>
+
+    <div class="mt-3">
+    <h5>Runtime OpenAI Settings</h5>
+    <form method="post" action="{{ url_for('super_set_openai_key') }}">
+        <div class="mb-2">
+        <input name="openai_key" class="form-control" placeholder="Paste OpenAI API key (runtime only)" value="{{ openai_key or '' }}" />
+      </div>
+      <div class="mb-2 d-flex gap-2">
+        <input name="openai_model" class="form-control" placeholder="model (e.g. gpt-4o-mini)" value="{{ openai_model or '' }}" />
+        <input name="openai_temp" class="form-control" placeholder="temperature (0.0 - 2.0)" value="{{ openai_temp or '' }}" />
+      </div>
+      <button class="btn btn-warning">Save OpenAI Settings</button>
+    </form>
+    <div class="mt-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('superadmin_change_password') }}">Change Your Password</a>
+      <a class="btn btn-outline-dark ms-2" href="{{ url_for('superadmin_logout') }}">Logout</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

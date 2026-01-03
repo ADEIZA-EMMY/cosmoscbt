@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Moderate Community Posts{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-10 offset-md-1">
+      <h3>Community Moderation</h3>
+      <p class="text-muted">Admins can remove inappropriate posts.</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for cat,msg in messages %}
+            <div class="alert alert-{{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      <table class="table table-striped moderation-table">
+        <thead><tr><th>ID</th><th>When</th><th>Author</th><th>Content</th><th>Reports</th><th>Likes</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for p in posts %}
+            <tr class="{% if p.is_deleted %}table-danger{% endif %}">
+              <td>{{ p.id }}</td>
+              <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ p.author_name or 'Anonymous' }}</td>
+              <td>{{ p.content|e }}</td>
+              <td>{{ p.reports or 0 }}</td>
+              <td>{{ p.likes or 0 }}</td>
+              <td>
+                {% if p.attachment %}
+                  <a href="{{ url_for('serve_uploads', filename=p.attachment) }}" target="_blank" class="btn btn-sm btn-outline-primary">Download</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {% if not p.is_deleted %}
+                <form method="post" action="{{ url_for('admin_community_delete', post_id=p.id) }}" style="display:inline;">
+                  <button class="btn btn-sm btn-danger" onclick="return confirm('Delete this post?');">Delete</button>
+                </form>
+                {% else %}
+                <span class="text-muted">Deleted</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Community Forum{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-8 offset-md-2">
+      <div class="community-card">
+        <div class="mb-3">
+          <h4 class="mb-0">Community Forum</h4>
+          <small class="text-muted">Global forum — everyone can view and post comments</small>
+        </div>
+
+        <div class="community-form mb-4">
+          <form method="post" enctype="multipart/form-data">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label">Name (optional)</label>
+                <input name="name" class="form-control" maxlength="100" placeholder="Your name or leave blank for Anonymous">
+              </div>
+              <div class="col-md-8">
+                <label class="form-label">Comment</label>
+                <textarea name="content" class="form-control" rows="2" placeholder="Share feedback, suggestions or complaints" required></textarea>
+                <div class="form-text mt-1">Optional: attach a file or photo (max 16MB)</div>
+              </div>
+            </div>
+            <div class="row mt-2">
+              <div class="col-md-6">
+                <input type="file" name="attachment" class="form-control form-control-sm" />
+              </div>
+            </div>
+            <div class="text-end mt-2">
+              <button class="btn btn-primary" type="submit">Post Comment</button>
+            </div>
+          </form>
+        </div>
+
+        <hr>
+
+        {% if posts %}
+          {% for p in posts %}
+            {% if not p.is_deleted %}
+            <div class="community-post">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="community-meta">{{ p.created_at.strftime('%Y-%m-%d %H:%M') }} — <span class="community-author">{{ p.author_name or 'Anonymous' }}</span></div>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="community-meta text-muted">{{ p.reports or 0 }} reports</div>
+                  {% set liked = session.get('liked_posts', []) %}
+                  {% set liked = liked | map('int') | list if liked else [] %}
+                  <form method="post" action="{{ url_for('community_like', post_id=p.id) }}" style="display:inline;">
+                    {% if p.id in liked %}
+                      <button class="btn btn-sm btn-outline-secondary" type="submit">👎 <span class="badge bg-light text-dark ms-1">{{ p.likes or 0 }}</span></button>
+                    {% else %}
+                      <button class="btn btn-sm btn-outline-primary" type="submit">👍 <span class="badge bg-light text-dark ms-1">{{ p.likes or 0 }}</span></button>
+                    {% endif %}
+                  </form>
+                </div>
+              </div>
+              <div class="mt-2">{{ p.content | e }}</div>
+              {% if p.attachment %}
+                <div class="mt-2">
+                  <a href="{{ url_for('serve_uploads', filename=p.attachment) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View attachment</a>
+                </div>
+                <div class="mt-2">
+                  <img src="{{ url_for('serve_uploads', filename=p.attachment) }}" class="img-fluid rounded" style="max-height:300px" />
+                </div>
+              {% endif %}
+            </div>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <div class="community-empty">No comments yet — be the first to post.</div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - COSMOS CBT{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Main content -->
+        <main class="col-12">
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                <div>
+                    <h1 class="h2">Dashboard</h1>
+                    <div class="d-flex align-items-center">
+                        {% if selected_class %}
+                            <small class="text-muted mr-3">Class: <strong>{{ selected_class }}</strong></small>
+                        {% elif school %}
+                            <small class="text-muted mr-3">School: <strong>{{ school.name }}</strong></small>
+                        {% endif %}
+                        {# School selection removed from admin dashboard (managed from superadmin) #}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats cards -->
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card text-white bg-primary mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Students</h5>
+                            <p class="card-text display-4">{{ students|length }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-success mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Exams</h5>
+                            <p class="card-text display-4">{{ exams|length }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-info mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Subjects</h5>
+                            <p class="card-text display-4">{{ subjects|length }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Quick Actions</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <a href="/admin/subjects" class="btn btn-primary w-100">
+                                        Manage Subjects
+                                    </a>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <a href="/admin/classes" class="btn btn-secondary w-100">
+                                        Manage Classes
+                                    </a>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <a href="/admin/questions" class="btn btn-primary w-100">
+                                        Manage Questions
+                                    </a>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <a href="/admin/exams" class="btn btn-primary w-100">
+                                        Manage Exams
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <a href="/admin/students" class="btn btn-warning w-100">
+                                        Manage Students
+                                    </a>
+                                </div>
+                                {# Manage Schools moved to superadmin dashboard #}
+                                <div class="col-md-3 mb-3">
+                                    <a href="/admin/question/upload" class="btn btn-success w-100">
+                                        Upload Questions
+                                    </a>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <div class="btn btn-outline-warning w-100 disabled" aria-disabled="true" role="button" title="Coming soon">
+                                        Generate Questions (AI)
+                                    </div>
+                                    <div class="mt-1 small text-muted text-center">This feature will be available soon</div>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <a href="/admin/community/moderate" class="btn btn-outline-secondary w-100">Moderate Community</a>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <a href="/admin/results" class="btn btn-info w-100">
+                                        View Results
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Recent Recordings -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Recent Student Recordings</h5>
+                            <div class="float-end d-flex" style="gap:8px;align-items:center;">
+                                <form method="get" class="d-flex" style="gap:8px;align-items:center;">
+                                    <select name="selected_class" class="form-select form-select-sm">
+                                        <option value="">All classes</option>
+                                        {% for c in classes %}
+                                            <option value="{{ c }}" {% if selected_class and selected_class==c %}selected{% endif %}>{{ c }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-sm btn-outline-primary" type="submit">Filter</button>
+                                </form>
+                                <form method="post" action="{{ url_for('admin_delete_recordings') }}" id="recordings-delete-form">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete selected recordings? This cannot be undone.')">Delete Selected</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            {% if recordings %}
+                                <form method="post" action="{{ url_for('admin_delete_recordings') }}" id="recordings-form">
+                                <div class="mb-2">
+                                    <input type="checkbox" id="select-all-recordings" /> <label for="select-all-recordings" class="small">Select all</label>
+                                </div>
+                                <ul class="list-group">
+                                {% for r in recordings %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <input type="checkbox" name="selected_recordings" value="{{ r.id }}" class="me-2 recording-checkbox" />
+                                            <strong>{{ r.student_full_name or r.student_username or 'Unknown' }}</strong>
+                                            <div class="text-muted">Class: {{ r.student_class or '—' }} — Exam ID: {{ r.exam_id or 'N/A' }} — Uploaded: {{ r.uploaded_at.strftime('%Y-%m-%d %H:%M') if r.uploaded_at else '' }}</div>
+                                        </div>
+                                        <div>
+                                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('serve_recording', filename=(r.filename_basename if r.filename_basename is defined else (r.filename.split('/')[-1])) ) }}">View</a>
+                                            <a class="btn btn-sm btn-outline-secondary ms-2" href="{{ url_for('admin_download_recording', rec_id=r.id) }}">Download</a>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                                </form>
+                            {% else %}
+                                <div class="text-muted">No recent recordings.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    var selectAll = document.getElementById('select-all-recordings');
+    if(selectAll){
+        selectAll.addEventListener('change', function(){
+            var checked = this.checked;
+            document.querySelectorAll('.recording-checkbox').forEach(function(cb){ cb.checked = checked; });
+        });
+    }
+
+    // Header delete button should submit the recordings form
+    var headerDeleteBtn = document.querySelector('form#recordings-delete-form button[type=submit]');
+    if(headerDeleteBtn){
+        headerDeleteBtn.addEventListener('click', function(e){
+            e.preventDefault();
+            var form = document.getElementById('recordings-form');
+            if(!form) return;
+            // ensure at least one is selected
+            var any = Array.from(document.querySelectorAll('.recording-checkbox')).some(function(cb){ return cb.checked; });
+            if(!any){
+                alert('Please select at least one recording to delete.');
+                return;
+            }
+            if(confirm('Delete selected recordings? This cannot be undone.')){
+                form.submit();
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

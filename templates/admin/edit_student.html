@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+  <h3>Edit Student</h3>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Username</label>
+      <input class="form-control" value="{{ student.username }}" disabled>
+    </div>
+    <div class="mb-3">
+      <label for="full_name" class="form-label">Full name</label>
+      <input id="full_name" name="full_name" class="form-control" value="{{ student.full_name or '' }}">
+    </div>
+    <div class="mb-3">
+      <label for="student_class" class="form-label">Class</label>
+      <input id="student_class" name="student_class" class="form-control" value="{{ student.student_class or '' }}">
+      {% if classes %}
+        <small class="text-muted">Suggested: {{ classes|join(', ') }}</small>
+      {% endif %}
+    </div>
+    <div class="mb-3">
+      <label for="gender" class="form-label">Gender</label>
+      <select id="gender" name="gender" class="form-select">
+        <option value="">Prefer not to say</option>
+        <option value="Male" {% if student.gender == 'Male' %}selected{% endif %}>Male</option>
+        <option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Female</option>
+        <option value="Other" {% if student.gender == 'Other' %}selected{% endif %}>Other</option>
+      </select>
+    </div>
+    {% if schools %}
+    <div class="mb-3">
+      <label for="school_id" class="form-label">School</label>
+      <select id="school_id" name="school_id" class="form-select">
+        <option value="">(none)</option>
+        {% for s in schools %}
+          <option value="{{ s.id }}" {% if student.school_id and student.school_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="mb-3">
+      <label for="passport" class="form-label">Passport / Photo</label>
+      <input id="passport" name="passport" type="file" class="form-control" accept="image/*" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+      <input type="hidden" id="passport_data" name="passport_data">
+      <div class="mt-2 d-flex align-items-center">
+        <button type="button" id="btn_upload" class="btn btn-outline-secondary btn-sm">Choose Photo</button>
+        <button type="button" id="btn_camera" class="btn btn-outline-primary btn-sm ms-2">Use Camera</button>
+        <button type="button" id="btn_remove" class="btn btn-outline-danger btn-sm ms-2" style="display:none;">Remove Photo</button>
+        <span id="camera_preview" style="display:inline-block;margin-left:8px"></span>
+      </div>
+      <div id="camera_container" style="display:none;margin-top:8px">
+        <video id="camera_video" autoplay playsinline style="max-width:100%;height:auto;border:1px solid #ccc"></video>
+        <div class="mt-2">
+          <button type="button" id="capture_btn" class="btn btn-primary btn-sm">Capture</button>
+          <button type="button" id="close_camera" class="btn btn-secondary btn-sm">Close</button>
+        </div>
+      </div>
+      {% if student.passport_filename %}
+        <div class="mt-2">
+          <img id="existing_passport" src="{{ url_for('serve_passport', filename=student.passport_filename.split('/')[-1]) }}" alt="Passport" style="width:96px;height:96px;object-fit:cover;border:1px solid #ddd;" />
+        </div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary">Save</button>
+      <a href="{{ url_for('admin_students') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+<script>
+// Use device camera app on mobile; on desktop use in-browser camera if available.
+;(function(){
+  function isMobileDevice(){
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    const fileInput = document.getElementById('passport');
+    const btnUpload = document.getElementById('btn_upload');
+    const btnCamera = document.getElementById('btn_camera');
+    const btnRemove = document.getElementById('btn_remove');
+    const preview = document.getElementById('camera_preview');
+    const hidden = document.getElementById('passport_data');
+    const cameraContainer = document.getElementById('camera_container');
+    const video = document.getElementById('camera_video');
+    const captureBtn = document.getElementById('capture_btn');
+    const closeCamera = document.getElementById('close_camera');
+    let stream = null;
+    if(!fileInput) return;
+    function showPreview(dataUrl, size){ if(preview) preview.innerHTML = '<img src="'+dataUrl+'" style="width:'+ (size||96) +'px;height:'+ (size||96) +'px;object-fit:cover;border:1px solid #ddd;" />'; if(btnRemove) btnRemove.style.display=''; if(document.getElementById('existing_passport')){ document.getElementById('existing_passport').style.display='none'; } }
+    btnUpload && btnUpload.addEventListener('click', function(){ fileInput.removeAttribute('capture'); fileInput.click(); });
+    btnCamera && btnCamera.addEventListener('click', async function(){
+      if(!isMobileDevice() && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        try{ stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'environment'}, audio:false }); video.srcObject = stream; cameraContainer.style.display=''; }
+        catch(e){ fileInput.setAttribute('capture','environment'); fileInput.click(); }
+      } else { fileInput.setAttribute('capture','environment'); fileInput.click(); }
+    });
+    captureBtn && captureBtn.addEventListener('click', function(){ try{ const w=video.videoWidth||640, h=video.videoHeight||480; const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h; const ctx=canvas.getContext('2d'); ctx.drawImage(video,0,0,w,h); const dataUrl=canvas.toDataURL('image/jpeg',0.9); try{ fileInput.value=''; }catch(e){} if(hidden) hidden.value=dataUrl; showPreview(dataUrl,96); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } cameraContainer.style.display='none'; }catch(e){ alert('Capture failed: '+(e&&e.message)); } });
+    closeCamera && closeCamera.addEventListener('click', function(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } cameraContainer.style.display='none'; });
+    fileInput.addEventListener('change', function(){ const f=this.files&&this.files[0]; if(!f) return; const fr=new FileReader(); fr.onload=function(e){ if(hidden) hidden.value=''; showPreview(e.target.result,96); }; fr.readAsDataURL(f); });
+    btnRemove && btnRemove.addEventListener('click', function(){ try{ fileInput.value=''; }catch(e){} if(hidden) hidden.value=''; if(preview) preview.innerHTML=''; if(btnRemove) btnRemove.style.display='none'; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } if(cameraContainer) cameraContainer.style.display='none'; if(document.getElementById('existing_passport')){ document.getElementById('existing_passport').style.display='none'; } });
+  });
+})();
+</script>

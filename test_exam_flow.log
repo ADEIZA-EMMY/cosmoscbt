@@ -1,0 +1,29 @@
+=== STARTING TEST ===
+
+1. Testing login...
+   Login status: 200
+   Final URL: http://127.0.0.1:5000/login
+
+2. Testing exam endpoint...
+   Exam status: 200
+   Final URL: http://127.0.0.1:5000/login
+   ✗ examSessionId NOT in response
+   Response text (first 500 chars): <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CBT System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        
+
+=== TEST COMPLETE ===

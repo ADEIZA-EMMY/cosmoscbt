@@ -1,0 +1,181 @@
+/* static/css/style.css */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.form-label {
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.register-container {
+    max-width: 800px;
+    margin: 50px auto;
+    padding: 30px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.form-section {
+    margin-bottom: 20px;
+    padding: 20px;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+}
+
+/* Navbar tweaks */
+.navbar-custom {
+    background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+}
+.navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* Card and container styling */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+.card-header {
+    background: transparent;
+    border-bottom: none;
+}
+
+/* Tables and lists */
+.table thead th {
+    background: linear-gradient(90deg, #eef2ff, #ecfeff);
+    font-weight: 600;
+}
+.list-group-item {
+    border: none;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 6px rgba(15,23,42,0.04);
+}
+
+/* Question card styles */
+.question-card {
+    padding: 14px;
+    border-radius: 10px;
+    background: #ffffff;
+}
+.question-card .fw-bold {
+    font-size: 1rem;
+}
+.question-actions .btn {
+    min-width: 68px;
+}
+
+/* Community forum (dark theme) */
+.community-card {
+    background: linear-gradient(180deg, #071125 0%, #0b1220 100%);
+    border: 1px solid rgba(59,130,246,0.10);
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(2,6,23,0.6);
+    color: #e6eef8;
+}
+.community-card a { color: #93c5fd; }
+.community-form .form-control {
+    border-radius: 6px;
+    border: 1px solid rgba(148,163,184,0.08);
+    /* Dark theme variables */
+    :root{
+      --bg: #070812; /* page background */
+      --surface: #0f1724; /* cards, panels */
+      --muted: #9aa6b2; /* secondary text */
+      --text: #e6eef8; /* main text */
+      --primary: #3b82f6; /* brand blue */
+      --primary-600: #2563eb;
+      --accent: #60a5fa;
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+
+    /* Base */
+    body{
+      background: linear-gradient(180deg,var(--bg), #071025 80%);
+      color: var(--text);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Headings and labels */
+    .form-label{ font-weight:600; color:var(--text); }
+
+    /* Buttons */
+    .btn-primary{ background:var(--primary); border-color:var(--primary); color:#fff; }
+    .btn-primary:hover{ background:var(--primary-600); border-color:var(--primary-600); }
+    .btn-outline-primary{ color:var(--primary); border-color:rgba(99,102,241,0.12); }
+    .btn-outline-primary:hover{ background:rgba(59,130,246,0.06); }
+    .btn-danger{ background:var(--danger); border-color:var(--danger); }
+    .btn-success{ background:var(--success); border-color:var(--success); }
+
+    /* Containers & cards */
+    .register-container, .card, .community-card{ background:var(--surface); color:var(--text); border-radius:12px; border:1px solid rgba(255,255,255,0.03); box-shadow:0 8px 30px rgba(2,6,23,0.6); }
+    .card-header{ background:transparent; border-bottom:none; }
+    .form-section{ margin-bottom:20px; padding:18px; border-radius:8px; border:1px solid rgba(255,255,255,0.02); }
+
+    /* Navbar */
+    .navbar-custom{ background: linear-gradient(90deg,var(--primary), #06b6d4); }
+    .navbar-brand{ font-weight:800; color:#fff; }
+
+    /* Tables */
+    .table thead th{ background:rgba(255,255,255,0.02); color:var(--text); font-weight:700; }
+    .list-group-item{ background:var(--surface); border:none; border-radius:8px; margin-bottom:8px; box-shadow:0 6px 16px rgba(2,6,23,0.6); }
+
+    /* Question card */
+    .question-card{ padding:14px; border-radius:10px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00)); color:var(--text); }
+    .question-actions .btn{ min-width:68px; }
+
+    /* Community area */
+    .community-card{ padding:18px; border-radius:12px; background: linear-gradient(180deg,var(--surface), rgba(11,18,36,0.9)); border:1px solid rgba(59,130,246,0.06); }
+    .community-form .form-control, .community-form textarea{ border-radius:8px; border:1px solid rgba(255,255,255,0.03); background:rgba(255,255,255,0.02); color:var(--text); }
+    .community-form .form-text{ color:var(--muted); }
+    .community-post{ padding:12px 14px; border-radius:8px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00)); border:1px solid rgba(59,130,246,0.04); box-shadow: 0 8px 24px rgba(2,6,23,0.6); }
+    .community-post + .community-post{ margin-top:12px; }
+    .community-meta{ font-size:.85rem; color:var(--muted); }
+    .community-author{ font-weight:800; color:var(--accent); }
+    .community-empty{ padding:28px; text-align:center; color:var(--muted); }
+    .community-post img{ max-height:300px; border-radius:6px; display:block; margin-top:8px; }
+
+    /* Moderation table tweaks */
+    .moderation-table thead th{ background:rgba(255,255,255,0.02); color:var(--text); }
+    .moderation-table td{ color:var(--text); }
+    .moderation-actions .btn{ margin-right:6px; }
+    .table-danger td{ background:rgba(239,68,68,0.06); }
+
+    /* Upload area */
+    .upload-dropzone{ border:2px dashed rgba(99,102,241,0.08); padding:18px; border-radius:8px; text-align:center; background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent); color:var(--muted); }
+
+    /* Login topbar */
+    .login-topbar{ position:fixed; top:0; left:0; right:0; background:var(--surface); z-index:1050; border-bottom:1px solid rgba(255,255,255,0.02); padding:10px 14px; display:flex; align-items:center; justify-content:center; gap:12px; }
+    .login-topbar a{ font-weight:700; color:var(--text); text-decoration:none; }
+    .login-topbar small{ color:var(--muted); }
+
+    /* Responsive tweaks */
+    @media (max-width:768px){ .question-card{ padding:10px } .navbar-brand{ font-size:1rem } }
+    @media (max-width:576px){ #prev-btn,#next-btn,#submit-btn,.question-actions .btn{ display:inline-flex!important; align-items:center; justify-content:center; padding:6px 10px; font-size:.9rem; border-radius:6px; min-width:0!important; width:auto!important } .login-topbar{ padding:8px 10px } }
+
+    /* Utilities */
+    .mb-1{ margin-bottom:.25rem!important } .me-2{ margin-right:.5rem!important }
+
+    /* Accent interactions */
+    .community-post:hover{ box-shadow:0 12px 40px rgba(59,130,246,0.08); border-color:rgba(59,130,246,0.14) }
+    .btn-link{ color:var(--accent) }
+
+    /* Ensure images and attachments contrast */
+    .community-post a.btn{ color:var(--text) }
+        width: 220px !important;

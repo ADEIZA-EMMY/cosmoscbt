@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h4 class="mb-0">Generate Questions (AI)</h4>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, msg in messages %}
+                      <div class="alert alert-{{ category }}">{{ msg }}</div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                <form method="post" action="{{ url_for('generate_questions') }}">
+                    <div class="mb-3">
+                        <label for="subject_id" class="form-label">Subject</label>
+                        <select id="subject_id" name="subject_id" class="form-select" required>
+                            <option value="">Select Subject</option>
+                            {% for s in subjects %}
+                                <option value="{{ s.id }}">{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="class_level" class="form-label">Class / Level (optional)</label>
+                        <input id="class_level" name="class_level" class="form-control" placeholder="e.g., JSS2, SS3, Grade 10">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="topics" class="form-label">Focus Topics (optional)</label>
+                        <textarea id="topics" name="topics" class="form-control" rows="3" placeholder="Enter comma or newline separated topics for the AI to focus on, e.g., Fractions, Algebra: linear equations"></textarea>
+                        <div class="form-text">Provide topics to guide the AI. Leave empty for general coverage.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="total_questions" class="form-label">Total Questions</label>
+                        <input id="total_questions" name="total_questions" type="number" min="1" max="200" value="10" class="form-control" required>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <a href="{{ url_for('admin_questions') }}" class="btn btn-secondary me-2">Cancel</a>
+                        <button type="submit" class="btn btn-warning">Generate</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

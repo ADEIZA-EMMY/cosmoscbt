@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<div>
+			<h3 class="mb-0">Manage Questions</h3>
+			<small class="text-muted">Total questions: {{ total_questions }}</small>
+		</div>
+		<div>
+			<a href="{{ url_for('add_question') }}" class="btn btn-primary">Add Question</a>
+			<a href="{{ url_for('upload_questions') }}" class="btn btn-success">Upload from Excel</a>
+		</div>
+	</div>
+
+	{% with messages = get_flashed_messages(with_categories=true) %}
+	  {% if messages %}
+		{% for category, msg in messages %}
+		  <div class="alert alert-{{ category }}">{{ msg }}</div>
+		{% endfor %}
+	  {% endif %}
+	{% endwith %}
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<form method="GET" action="{{ url_for('admin_questions') }}" class="row g-2 align-items-center">
+				<div class="col-auto">
+					<input list="subjectCodes" name="subject_code" class="form-control" placeholder="Subject code (e.g. MAT)" value="{{ request.args.get('subject_code','') }}">
+					<datalist id="subjectCodes">
+						{% for subject in subjects %}
+						<option value="{{ subject.code }}">{{ subject.name }}</option>
+						{% endfor %}
+					</datalist>
+				</div>
+				<div class="col-auto">
+					<input list="subjectClasses" name="subject_class" class="form-control" placeholder="Class (e.g. SS2)" value="{{ request.args.get('subject_class','') }}">
+					<datalist id="subjectClasses">
+						{% for subject in subjects %}
+							{% if subject.subject_class %}
+							<option value="{{ subject.subject_class }}">{{ subject.name }}</option>
+							{% endif %}
+						{% endfor %}
+					</datalist>
+				</div>
+				<div class="col-auto">
+					<button type="submit" class="btn btn-outline-primary">Filter</button>
+				</div>
+				<div class="col text-end">
+					<form method="post" action="{{ url_for('admin_delete_all_questions') }}" onsubmit="return confirm('Delete ALL questions? This cannot be undone.');" style="display:inline;">
+						<button type="submit" class="btn btn-danger">Delete All</button>
+					</form>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<!-- Grouped Questions Display -->
+	<div class="container-fluid">
+		{% if groups %}
+			{% for group in groups %}
+			<div class="card mb-4 border-primary">
+				<div class="card-header bg-primary text-white">
+					<div class="d-flex justify-content-between align-items-center" role="button" data-bs-toggle="collapse" data-bs-target="#group{{ loop.index }}" aria-expanded="false" aria-controls="group{{ loop.index }}" style="cursor: pointer;">
+						<div>
+							{% set subj_obj = group['questions'][0].subject if group['questions'] and group['questions'][0].subject else None %}
+							<h5 class="mb-0">
+								<strong>{{ subj_obj.name if subj_obj else group['subject'] }}</strong> | Class: <strong>{{ group['class'] or 'All' }}</strong>
+							</h5>
+							<small>Uploaded: {{ group['date'] }}</small>
+							{% if group['set_name'] %}
+								<small class="ms-2">| Set: <strong>{{ group['set_name'] }}</strong></small>
+							{% endif %}
+							{% if subj_obj and subj_obj.code %}
+								<div><small class="text-light">Code: <strong class="text-white">{{ subj_obj.code }}</strong></small></div>
+							{% else %}
+								{# Fallback: show the group subject string if it looks like a code or no code present #}
+								<div><small class="text-light">Code: <strong class="text-white">{{ group['subject'] }}</strong></small></div>
+							{% endif %}
+						</div>
+						<div class="d-flex align-items-center">
+							<span class="badge bg-light text-primary me-3">{{ group['questions']|length }} questions</span>
+							<i class="bi bi-chevron-down" style="font-size: 1.5rem; transition: transform 0.3s;">▼</i>
+						</div>
+					</div>
+				</div>
+				<div class="collapse" id="group{{ loop.index }}">
+					<div class="card-body">
+						<!-- Collapsible Questions within Group -->
+						<div class="list-group">
+						{% for q in group['questions'] %}
+						<div class="list-group-item">
+							<div class="d-flex justify-content-between align-items-start">
+								<div class="me-3 flex-grow-1">
+									<input type="checkbox" class="question-checkbox me-2" name="selected_questions" value="{{ q.id }}">
+									<a data-bs-toggle="collapse" href="#qbody{{ q.id }}" role="button" aria-expanded="false" aria-controls="qbody{{ q.id }}" class="text-decoration-none">
+										<strong>{{ q.question_text|truncate(100, True, '...') }}</strong>
+									</a>
+									<div class="text-muted small mt-1">{{ (q.explanation or '')|truncate(80, True, '...') }}</div>
+								</div>
+								<div class="text-end small text-muted">
+									<div>Marks: {{ q.marks or 1 }}</div>
+								</div>
+							</div>
+							<!-- Expanded Question Details -->
+							<div class="collapse mt-2" id="qbody{{ q.id }}">
+								<div class="card card-body mt-2">
+									<p><strong>Question:</strong> {{ q.question_text }}</p>
+									{% if not q.is_theory %}
+										<p><strong>Options:</strong></p>
+										<ul>
+											{% if q.option_a %}<li>A: {{ q.option_a }}</li>{% endif %}
+											{% if q.option_b %}<li>B: {{ q.option_b }}</li>{% endif %}
+											{% if q.option_c %}<li>C: {{ q.option_c }}</li>{% endif %}
+											{% if q.option_d %}<li>D: {{ q.option_d }}</li>{% endif %}
+											{% if q.option_e %}<li>E: {{ q.option_e }}</li>{% endif %}
+										</ul>
+										<p><strong>Correct Answer:</strong> {{ q.correct_answer }}</p>
+									{% else %}
+										<p><strong>Theory:</strong> {{ q.theory_text }}</p>
+									{% endif %}
+									<p><strong>Explanation:</strong> {{ q.explanation or '—' }}</p>
+									<div class="btn-group mt-2" role="group">
+										<a class="btn btn-sm btn-secondary" href="{{ url_for('add_question') }}?edit={{ q.id }}">Edit</a>
+										<a class="btn btn-sm btn-info" href="{{ url_for('admin_question_image', question_id=q.id) }}">Add Image</a>
+										<form method="post" action="{{ url_for('admin_delete_question', question_id=q.id) }}" style="display:inline;">
+											<button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this question?');">Delete</button>
+										</form>
+									</div>
+								</div>
+							</div>
+						</div>
+						{% endfor %}
+					</div>
+				</div>
+			</div>
+			{% endfor %}
+		{% else %}
+			<div class="alert alert-info">No questions found. <a href="{{ url_for('upload_questions') }}">Upload from Excel</a> or <a href="{{ url_for('add_question') }}">add manually</a>.</div>
+		{% endif %}
+	</div>
+
+	<div class="d-flex justify-content-between align-items-center mt-3">
+		<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back</a>
+		<form id="bulk-delete-questions" method="post" action="{{ url_for('admin_delete_selected_questions') }}" onsubmit="return confirm('Delete selected questions?');">
+			<input type="hidden" name="ids" id="bulk-question-ids">
+			<button type="submit" class="btn btn-danger" id="bulk-delete-questions-btn" disabled>Delete Selected</button>
+		</form>
+	</div>
+
+	<script>
+		const selectAll = document.getElementById('select_all_questions');
+		const questionCheckboxes = document.querySelectorAll('.question-checkbox');
+		const bulkQuestionsBtn = document.getElementById('bulk-delete-questions-btn');
+		const bulkQuestionIds = document.getElementById('bulk-question-ids');
+
+		function updateQuestionBulk(){
+			const checked = Array.from(questionCheckboxes).filter(c=>c.checked);
+			bulkQuestionsBtn.disabled = checked.length === 0;
+			bulkQuestionIds.value = checked.map(c=>c.value).join(',');
+		}
+
+		if(selectAll){
+			selectAll.addEventListener('change', ()=>{
+				questionCheckboxes.forEach(c=> c.checked = selectAll.checked);
+				updateQuestionBulk();
+			});
+		}
+		questionCheckboxes.forEach(c=> c.addEventListener('change', updateQuestionBulk));
+	</script>
+</div>
+{% endblock %}

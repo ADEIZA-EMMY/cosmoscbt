@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+	<div class="col-md-9">
+		<div class="card shadow-sm">
+			<div class="card-header bg-gradient-primary text-white d-flex align-items-center justify-content-between">
+				<h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>Create New Exam</h5>
+				<small class="text-light">Quickly create and preview exam details</small>
+			</div>
+			<div class="card-body">
+				{% with messages = get_flashed_messages(with_categories=true) %}
+				  {% if messages %}
+					{% for category, msg in messages %}
+					  <div class="alert alert-{{ category }}">{{ msg }}</div>
+					{% endfor %}
+				  {% endif %}
+				{% endwith %}
+
+				<div class="row">
+					<div class="col-md-7">
+						<form method="POST">
+							<div class="mb-3">
+								<label class="form-label">Subject</label>
+								<select class="form-select" name="subject_id" id="subject_id" required>
+									<option value="">-- Select Subject --</option>
+									{% for s in subjects %}
+										<option value="{{ s.id }}" data-class="{{ s.subject_class or '' }}">{{ s.name }}</option>
+									{% endfor %}
+								</select>
+							</div>
+
+							<div class="mb-3">
+								<label class="form-label">Class (optional)</label>
+								<select name="subject_class" id="subject_class" class="form-select">
+									<option value="">(any)</option>
+									{% if classes %}
+										{% for cls in classes %}
+											<option value="{{ cls }}">{{ cls }}</option>
+										{% endfor %}
+									{% endif %}
+								</select>
+
+								<div class="mt-2">
+									<label class="form-label">Allowed classes (students from these classes can take this exam)</label>
+									<select name="allowed_classes" id="allowed_classes" class="form-select" multiple size="4">
+										{% if classes %}
+											{% for cls in classes %}
+												<option value="{{ cls }}">{{ cls }}</option>
+											{% endfor %}
+										{% endif %}
+									</select>
+									<div class="form-text">Hold Ctrl (Cmd) to select multiple classes. Leave empty to allow all classes.</div>
+								</div>
+							</div>
+
+							<div class="mb-3">
+								<label class="form-label">Question Set (optional)</label>
+								<select name="question_set_id" id="question_set_id" class="form-select">
+									<option value="">Use all questions for subject (default)</option>
+									{% if question_sets %}
+										{% for qs in question_sets %}
+											<option value="{{ qs.id }}" data-subject="{{ qs.subject_id or '' }}">{{ qs.name }}{% if qs.upload_filename %} - {{ qs.upload_filename }}{% endif %} &middot; {{ qs.created_at.strftime('%Y-%m-%d') }}</option>
+										{% endfor %}
+									{% endif %}
+								</select>
+								<div class="form-text">Select an uploaded set to build this exam only from that upload.</div>
+							</div>
+
+							<div class="mb-3">
+								<label class="form-label">Exam Title</label>
+								<input type="text" name="title" class="form-control" placeholder="e.g. Term 1 Math - Objective" required>
+							</div>
+
+							<div class="mb-3">
+								<label class="form-label">Description</label>
+								<textarea name="description" class="form-control" rows="3" placeholder="Short description (optional)"></textarea>
+							</div>
+
+							<div class="row">
+								<div class="col-md-6 mb-3">
+									<label class="form-label">Duration (minutes)</label>
+									<input type="number" name="duration" class="form-control" placeholder="Duration" required>
+								</div>
+								<div class="col-md-6 mb-3 d-flex align-items-end">
+									<div class="w-100">
+										<div class="form-label">Actions</div>
+										<div class="d-flex">
+											<a href="{{ url_for('admin_exams') }}" class="btn btn-outline-secondary me-2">Cancel</a>
+											<button type="submit" class="btn btn-primary">Create Exam</button>
+										</div>
+									</div>
+								</div>
+							</div>
+						</form>
+					</div>
+
+					<div class="col-md-5">
+						<div class="card border-0 bg-light p-3">
+							<h6 class="mb-2"><i class="fas fa-info-circle me-2 text-primary"></i>Exam Preview</h6>
+							<dl class="row small mb-0">
+								<dt class="col-6">Subject</dt>
+								<dd class="col-6" id="preview_subject">—</dd>
+
+								<dt class="col-6">Class</dt>
+								<dd class="col-6" id="preview_class">—</dd>
+
+								<dt class="col-6">Selected Classes</dt>
+								<dd class="col-6" id="preview_selected_classes">
+									<!-- selected allowed classes will appear here as badges -->
+								</dd>
+
+								<dt class="col-6">Question Set</dt>
+								<dd class="col-6" id="preview_qset">All questions</dd>
+
+								<dt class="col-6">Questions</dt>
+								<dd class="col-6" id="preview_count">0</dd>
+
+								<dt class="col-6">Total Marks</dt>
+								<dd class="col-6 fw-bold" id="preview_marks">0</dd>
+							</dl>
+							<hr/>
+							<p class="small text-muted">Tip: If you want an exam drawn only from a particular upload, choose its Question Set. Otherwise all questions for the subject will be used.</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+// Client-side preview logic using server-provided stats
+const subjectStats = {{ subject_stats|tojson }} || {};
+const qsetStats = {{ qset_stats|tojson }} || {};
+const subjectsMap = {};
+{% for s in subjects %}
+subjectsMap['{{ s.id }}'] = '{{ s.name }}';
+{% endfor %}
+
+(function(){
+	const subj = document.getElementById('subject_id');
+	const cls = document.getElementById('subject_class');
+	const qset = document.getElementById('question_set_id');
+	const ps = document.getElementById('preview_subject');
+	const pc = document.getElementById('preview_class');
+	const pq = document.getElementById('preview_qset');
+	const pcount = document.getElementById('preview_count');
+	const pmarks = document.getElementById('preview_marks');
+
+	// keep original qset options so filtering doesn't permanently remove them
+	const originalQsetOptions = qset ? Array.from(qset.options).map(o => o.cloneNode(true)) : [];
+
+	function updatePreview(){
+		const sid = subj ? subj.value : '';
+		const sname = sid ? (subjectsMap[sid] || 'Selected subject') : '—';
+		ps.textContent = sname;
+		const classVal = (cls && cls.value && cls.value.trim()) ? cls.value.trim() : '';
+		pc.textContent = classVal || '—';
+		const qid = qset ? qset.value : '';
+
+		if(qid){
+			pq.textContent = qset.options[qset.selectedIndex].text;
+			const stats = qsetStats[qid] || {count:0, marks:0, by_class:{}};
+			if(classVal && stats.by_class && stats.by_class[classVal]){
+				pcount.textContent = stats.by_class[classVal].count || 0;
+				pmarks.textContent = stats.by_class[classVal].marks || 0;
+			} else {
+				pcount.textContent = stats.count || 0;
+				pmarks.textContent = stats.marks || 0;
+			}
+		} else {
+			pq.textContent = 'All questions';
+			const stats = subjectStats[sid] || {count:0, marks:0, by_class:{}};
+			if(classVal && stats.by_class && stats.by_class[classVal]){
+				pcount.textContent = stats.by_class[classVal].count || 0;
+				pmarks.textContent = stats.by_class[classVal].marks || 0;
+			} else {
+				pcount.textContent = stats.count || 0;
+				pmarks.textContent = stats.marks || 0;
+			}
+		}
+	}
+
+	if(subj) subj.addEventListener('change', function(){
+		// Auto-select class when subject chosen
+		const opt = subj.options[subj.selectedIndex];
+		const c = opt ? opt.getAttribute('data-class') : '';
+		if(c && cls){
+			for(let i=0;i<cls.options.length;i++){
+				if(cls.options[i].value === c){ cls.selectedIndex = i; break; }
+			}
+		}
+		// filter qset options using the preserved original options
+		const sid = subj.value;
+		if(qset){
+			qset.innerHTML = '';
+			const defaultOpt = document.createElement('option'); defaultOpt.value=''; defaultOpt.text = 'Use all questions for subject (default)'; qset.appendChild(defaultOpt);
+			for(const opt of originalQsetOptions){
+				if(!opt.value) continue;
+				const ds = opt.getAttribute('data-subject') || '';
+				if(!sid || ds === '' || ds === String(sid)){
+					qset.appendChild(opt.cloneNode(true));
+				}
+			}
+		}
+		updatePreview();
+	});
+	if(qset) qset.addEventListener('change', updatePreview);
+	if(cls) cls.addEventListener('change', updatePreview);
+
+	// reflect allowed_classes multi-select into preview badges and allow removal
+	const allowedSelect = document.getElementById('allowed_classes');
+	const selectedContainer = document.getElementById('preview_selected_classes');
+	function renderSelectedClasses(){
+		if(!allowedSelect || !selectedContainer) return;
+		selectedContainer.innerHTML = '';
+		const vals = Array.from(allowedSelect.options).filter(o=>o.selected).map(o=>o.value);
+		if(vals.length===0){ selectedContainer.textContent = '—'; return; }
+		for(let i=0;i<vals.length;i++){
+			const v = vals[i];
+			const span = document.createElement('span');
+			span.className = 'badge bg-secondary me-1 mb-1';
+			span.style.cursor = 'pointer';
+			span.textContent = (i+1) + '. ' + v + ' \u00A0\u2716';
+			span.title = 'Click to remove';
+			span.addEventListener('click', function(){
+				// unselect option
+				for(const opt of allowedSelect.options){ if(opt.value===v){ opt.selected = false; break; } }
+				// trigger change
+				allowedSelect.dispatchEvent(new Event('change'));
+			});
+			selectedContainer.appendChild(span);
+		}
+	}
+
+	if(allowedSelect) allowedSelect.addEventListener('change', function(){ renderSelectedClasses(); updatePreview(); });
+	// initial render
+	renderSelectedClasses();
+
+	// initialize
+	updatePreview();
+})();
+</script>
+
+{% endblock %}

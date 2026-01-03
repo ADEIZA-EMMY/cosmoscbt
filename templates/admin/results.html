@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Exam Results</h2>
+</div>
+
+<div class="mb-3">
+    <form method="post" action="/admin/results/export_subject" class="d-flex g-2 align-items-center">
+        <label class="me-2">Export results by subject:</label>
+        <select name="subject_id" class="form-select form-select-sm me-2" required>
+            <option value="">-- Select Subject --</option>
+            {% for subj in subjects %}
+                <option value="{{ subj.id }}">{{ subj.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-success">Export to Excel</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0">All Completed Exams</h5>
+    </div>
+    <div class="card-body">
+        {% if exam_sessions %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Exam</th>
+                        <th>Subject</th>
+                        <th>Score</th>
+                        <th>Duration</th>
+                        <th>Completed</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in exam_sessions %}
+                    <tr>
+                        <td>{{ session.student.full_name }}</td>
+                        <td>{{ session.exam.title }}</td>
+                        <td>{{ session.exam.subject.name }}</td>
+                        <td>
+                            <strong>{{ session.score }}/{{ session.exam.total_marks }}</strong>
+                            ({{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%)
+                        </td>
+                        <td>
+                            {% if session.end_time %}
+                                {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} mins
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#resultModal{{ session.id }}">
+                                <i class="fas fa-chart-bar"></i> Details
+                            </button>
+                        </td>
+                    </tr>
+
+                    <!-- Result Modal -->
+                    <div class="modal fade" id="resultModal{{ session.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Exam Result Details</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <strong>Student:</strong> {{ session.student.full_name }}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Username:</strong> {{ session.student.username }}
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2">
+                                        <div class="col-md-6">
+                                            <strong>Exam:</strong> {{ session.exam.title }}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Subject:</strong> {{ session.exam.subject.name }}
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2">
+                                        <div class="col-md-6">
+                                            <strong>Score:</strong> {{ session.score }}/{{ session.exam.total_marks }}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Percentage:</strong> {{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2">
+                                        <div class="col-md-6">
+                                            <strong>Start Time:</strong> {{ session.start_time.strftime('%Y-%m-%d %H:%M') }}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>End Time:</strong> {{ session.end_time.strftime('%Y-%m-%d %H:%M') }}
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2">
+                                        <div class="col-md-6">
+                                            <strong>Duration:</strong> 
+                                            {% if session.end_time %}
+                                                {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} minutes
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    <hr>
+                                    <h6>Performance Summary:</h6>
+                                    <div class="progress mb-3" style="height: 30px;">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: {{ (session.score/session.exam.total_marks)*100 }}%;"
+                                             aria-valuenow="{{ (session.score/session.exam.total_marks)*100 }}" 
+                                             aria-valuemin="0" aria-valuemax="100">
+                                            {{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="alert 
+                                        {% if (session.score/session.exam.total_marks)*100 >= 80 %}alert-success
+                                        {% elif (session.score/session.exam.total_marks)*100 >= 50 %}alert-warning
+                                        {% else %}alert-danger{% endif %}">
+                                        <i class="fas fa-{% if (session.score/session.exam.total_marks)*100 >= 80 %}trophy
+                                        {% elif (session.score/session.exam.total_marks)*100 >= 50 %}check-circle
+                                        {% else %}exclamation-circle{% endif %} me-2"></i>
+                                        {% if (session.score/session.exam.total_marks)*100 >= 80 %}
+                                        Excellent performance! The student has scored very well.
+                                        {% elif (session.score/session.exam.total_marks)*100 >= 50 %}
+                                        Good attempt. There's room for improvement.
+                                        {% else %}
+                                        Needs improvement. Consider additional study and practice.
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary">
+                                        <i class="fas fa-download me-2"></i>Download Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+            <p class="text-muted">No exam results found. Students need to complete exams to see results here.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+	<h3 class="mb-3">Manage Exams</h3>
+
+	{% with messages = get_flashed_messages(with_categories=true) %}
+	  {% if messages %}
+		{% for category, msg in messages %}
+		  <div class="alert alert-{{ category }}">{{ msg }}</div>
+		{% endfor %}
+	  {% endif %}
+	{% endwith %}
+
+	<div class="mb-2">
+		<a href="{{ url_for('add_exam') }}" class="btn btn-primary">Create New Exam</a>
+	</div>
+
+	<table class="table table-striped">
+		<thead>
+			<tr>
+				<th><input type="checkbox" id="select_all_exams"></th>
+				<th>Title</th>
+				<th>Code</th>
+				<th>Subject</th>
+				<th>Class</th>
+				<th>Duration</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody>
+		{% for exam in exams %}
+			<tr>
+				<td><input type="checkbox" name="selected_exams" value="{{ exam.id }}" class="exam-checkbox"></td>
+				<td>{{ exam.title }}</td>
+				<td>{{ exam.code or '—' }}</td>
+				<td>{{ exam.subject.name }}</td>
+				<td>{{ exam.subject_class or exam.subject.subject_class or '—' }}</td>
+				<td>{{ exam.duration }} min</td>
+				<td>
+					<a href="{{ url_for('admin_view_exam', exam_id=exam.id) }}" class="btn btn-sm btn-primary">View</a>
+					<a href="{{ url_for('admin_exam_codes', exam_id=exam.id) }}" class="btn btn-sm btn-secondary">Manage Codes</a>
+					<form method="post" action="{{ url_for('admin_delete_exam', exam_id=exam.id) }}" style="display:inline;" onsubmit="return confirm('Delete this exam and its sessions?');">
+							<button type="submit" class="btn btn-sm btn-danger">Delete</button>
+					</form>
+				</td>
+			</tr>
+		{% endfor %}
+		</tbody>
+	</table>
+
+	<form id="bulk-delete-exams" method="post" action="{{ url_for('admin_delete_selected_exams') }}" onsubmit="return confirm('Delete selected exams and their sessions?');">
+		<input type="hidden" name="ids" id="bulk-exam-ids">
+		<button type="submit" class="btn btn-danger" id="bulk-delete-exams-btn" disabled>Delete Selected</button>
+	</form>
+
+	<script>
+		const selectAllExams = document.getElementById('select_all_exams');
+		const examCheckboxes = document.querySelectorAll('.exam-checkbox');
+		const bulkExamsBtn = document.getElementById('bulk-delete-exams-btn');
+		const bulkExamIds = document.getElementById('bulk-exam-ids');
+		function updateExamBulk(){
+			const checked = Array.from(examCheckboxes).filter(c=>c.checked);
+			bulkExamsBtn.disabled = checked.length === 0;
+			bulkExamIds.value = checked.map(c=>c.value).join(',');
+		}
+		if(selectAllExams){
+			selectAllExams.addEventListener('change', ()=>{
+				examCheckboxes.forEach(c=> c.checked = selectAllExams.checked);
+				updateExamBulk();
+			});
+		}
+		examCheckboxes.forEach(c=> c.addEventListener('change', updateExamBulk));
+	</script>
+
+	<div class="d-flex justify-content-between mt-3">
+		<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back</a>
+	</div>
+</div>
+{% endblock %}

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - CBT System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .register-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 500px;
+        }
+        .register-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .register-header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .register-header p {
+            color: #666;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        <script>
+        // Use device camera app on mobile; on desktop use in-browser camera if available.
+        (function(){
+            function isMobileDevice(){
+                return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+            }
+
+            document.addEventListener('DOMContentLoaded', function(){
+                const fileInput = document.getElementById('passport');
+                const btnUpload = document.getElementById('btn_upload');
+                const btnCamera = document.getElementById('btn_camera');
+                const btnRemove = document.getElementById('btn_remove');
+                const preview = document.getElementById('camera_preview');
+                const hidden = document.getElementById('passport_data');
+                const cameraContainer = document.getElementById('camera_container');
+                const video = document.getElementById('camera_video');
+                const captureBtn = document.getElementById('capture_btn');
+                const closeCamera = document.getElementById('close_camera');
+                let stream = null;
+
+                if(!fileInput) return;
+
+                function showPreviewDataUrl(dataUrl, size){
+                    if(preview) preview.innerHTML = '<img src="'+dataUrl+'" style="width:'+ (size||64) +'px;height:'+ (size||64) +'px;object-fit:cover;border:1px solid #ddd;" />';
+                    if(btnRemove) btnRemove.style.display = '';
+                }
+
+                btnUpload && btnUpload.addEventListener('click', function(){ fileInput.removeAttribute('capture'); fileInput.click(); });
+
+                btnCamera && btnCamera.addEventListener('click', async function(){
+                    // If desktop and getUserMedia available, open in-page camera; otherwise use file input with capture attr (mobile)
+                    if(!isMobileDevice() && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+                        try{
+                            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+                            video.srcObject = stream;
+                            cameraContainer.style.display = '';
+                        }catch(e){
+                            // fallback to file input if camera access denied
+                            fileInput.setAttribute('capture','environment'); fileInput.click();
+                        }
+                    }else{
+                        fileInput.setAttribute('capture','environment'); fileInput.click();
+                    }
+                });
+
+                captureBtn && captureBtn.addEventListener('click', function(){
+                    try{
+                        const w = video.videoWidth || 640; const h = video.videoHeight || 480;
+                        const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d'); ctx.drawImage(video,0,0,w,h);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                        // clear file input
+                        try{ fileInput.value = ''; }catch(e){}
+                        if(hidden) hidden.value = dataUrl;
+                        showPreviewDataUrl(dataUrl,64);
+                        if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+                        cameraContainer.style.display = 'none';
+                    }catch(e){ alert('Capture failed: '+ (e && e.message)); }
+                });
+
+                closeCamera && closeCamera.addEventListener('click', function(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } cameraContainer.style.display='none'; });
+
+                fileInput.addEventListener('change', function(){
+                    const f = this.files && this.files[0]; if(!f) return;
+                    const fr = new FileReader(); fr.onload = function(e){
+                        // clear any data uri hidden field (server will use request.files)
+                        if(hidden) hidden.value = '';
+                        showPreviewDataUrl(e.target.result,64);
+                    };
+                    fr.readAsDataURL(f);
+                });
+
+                btnRemove && btnRemove.addEventListener('click', function(){
+                    try{ fileInput.value = ''; }catch(e){}
+                    if(hidden) hidden.value = '';
+                    if(preview) preview.innerHTML = '';
+                    if(btnRemove) btnRemove.style.display = 'none';
+                    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+                    if(cameraContainer) cameraContainer.style.display = 'none';
+                });
+            });
+        })();
+        </script>
+                    placeholder="Choose a username"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="school_id">School</label>
+                <select id="school_id" name="school_id" required>
+                    <option value="">Select your school</option>
+                    {% for s in schools %}
+                        <option value="{{ s.id }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="school_code">School Access Code</label>
+                <input
+                    type="text"
+                    id="school_code"
+                    name="school_code"
+                    placeholder="Enter 10-digit school access code"
+                    required
+                >
+            </div>
+            <div class="form-group">
+                <label for="student_class">Class / Level</label>
+                <select id="student_class" name="student_class">
+                    <option value="">Select class (optional)</option>
+                    {% if classes %}
+                        {% for cl in classes %}
+                            <option value="{{ cl }}">{{ cl }}</option>
+                        {% endfor %}
+                    {% else %}
+                        <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+                        <option>SS1</option><option>SS2</option><option>SS3</option>
+                        <option>BASIC1</option><option>BASIC2</option><option>BASIC3</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="gender">Gender</label>
+                <select id="gender" name="gender">
+                    <option value="">Prefer not to say</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="passport">Passport / Profile Photo (optional)</label>
+                <input type="file" id="passport" name="passport" accept="image/*" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+                <input type="hidden" id="passport_data" name="passport_data">
+                    <div class="mt-2 d-flex align-items-center">
+                        <button type="button" id="btn_upload" class="btn btn-outline-secondary btn-sm">Choose Photo</button>
+                        <button type="button" id="btn_camera" class="btn btn-outline-primary btn-sm ms-2">Use Camera</button>
+                        <button type="button" id="btn_remove" class="btn btn-outline-danger btn-sm ms-2" style="display:none;">Remove Photo</button>
+                        <span id="camera_preview" style="display:inline-block;margin-left:8px"></span>
+                    </div>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password" 
+                    placeholder="Enter your password"
+                    required
+                >
+            </div>
+
+            <button type="submit">Register</button>
+        </form>
+
+        <div class="register-footer">
+            <p>Already have an account? <a href="/login">Login here</a></p>
+        </div>
+    </div>
+    <script>
+    // Eye icon show/hide password for standalone register template
+    document.addEventListener('DOMContentLoaded', function () {
+        function eyeSVG() { return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; }
+        function eyeOffSVG() { return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.42 21.42 0 0 1 5.06-6.94"></path><path d="M1 1l22 22"></path></svg>'; }
+        try {
+            var input = document.getElementById('password');
+            if (input && !input.dataset.toggleAdded) {
+                var parent = input.parentElement || input.parentNode;
+                if (parent) parent.style.position = parent.style.position || 'relative';
+                var btn = document.createElement('button');
+                btn.type = 'button'; btn.className = 'btn btn-sm btn-outline-secondary';
+                btn.innerHTML = eyeSVG();
+                btn.setAttribute('aria-label','Show password');
+                btn.style.position = 'absolute'; btn.style.right = '8px'; btn.style.top = '50%'; btn.style.transform = 'translateY(-50%)'; btn.style.padding = '4px 6px'; btn.style.zIndex = 5;
+                try { input.style.paddingRight = '60px'; } catch (e) {}
+                btn.addEventListener('click', function () { if (input.type === 'password') { input.type = 'text'; btn.innerHTML = eyeOffSVG(); btn.setAttribute('aria-label','Hide password'); } else { input.type = 'password'; btn.innerHTML = eyeSVG(); btn.setAttribute('aria-label','Show password'); } });
+                parent.appendChild(btn);
+                input.dataset.toggleAdded = '1';
+            }
+            var c = document.getElementById('confirm_password');
+            if (c && !c.dataset.toggleAdded) {
+                var p = c.parentElement || c.parentNode;
+                if (p) p.style.position = p.style.position || 'relative';
+                    var b2 = document.createElement('button');
+                    b2.type = 'button'; b2.className = 'btn btn-sm';
+                    b2.style.border = 'none'; b2.style.background = 'transparent';
+                    b2.innerHTML = eyeSVG();
+                    b2.setAttribute('aria-label','Show confirm password');
+                    b2.style.position = 'absolute'; b2.style.right = '4px'; b2.style.top = '50%'; b2.style.transform = 'translateY(-50%)'; b2.style.padding = '2px'; b2.style.width = '28px'; b2.style.height = '28px'; b2.style.zIndex = 5;
+                    // light gray icon color
+                    b2.style.color = '#b0b0b0';
+                    // darken on hover
+                    b2.addEventListener('mouseenter', function(){ b2.style.color = '#666'; });
+                    b2.addEventListener('mouseleave', function(){ b2.style.color = '#b0b0b0'; });
+                    try { c.style.paddingRight = '36px'; } catch (e) {}
+                    b2.addEventListener('click', function () { if (c.type === 'password') { c.type = 'text'; b2.innerHTML = eyeOffSVG(); b2.setAttribute('aria-label','Hide confirm password'); } else { c.type = 'password'; b2.innerHTML = eyeSVG(); b2.setAttribute('aria-label','Show confirm password'); } });
+                p.appendChild(b2);
+                c.dataset.toggleAdded = '1';
+            }
+        } catch (e) { console.warn('toggle error', e); }
+    });
+    </script>
+    <script>
+    // Use device camera app or file picker depending on the button
+    (function(){
+        document.addEventListener('DOMContentLoaded', function(){
+            const fileInput = document.getElementById('passport');
+            const btnUpload = document.getElementById('btn_upload');
+            const btnCamera = document.getElementById('btn_camera');
+            const preview = document.getElementById('camera_preview');
+            const hidden = document.getElementById('passport_data');
+            if(!fileInput) return;
+            btnUpload && btnUpload.addEventListener('click', function(){ fileInput.removeAttribute('capture'); fileInput.click(); });
+            btnCamera && btnCamera.addEventListener('click', function(){ fileInput.setAttribute('capture','environment'); fileInput.click(); });
+            fileInput.addEventListener('change', function(){
+                const f = this.files && this.files[0]; if(!f) return;
+                const fr = new FileReader(); fr.onload = function(e){ if(preview) preview.innerHTML = '<img src="'+e.target.result+'" style="width:64px;height:64px;object-fit:cover;border:1px solid #ddd;" />'; if(hidden) hidden.value = ''; };
+                fr.readAsDataURL(f);
+            });
+        });
+    })();
+    </script>
+    </body>
+    </html>

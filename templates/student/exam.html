@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ exam.title }}</h5>
+                    <div id="exam-timer" class="badge bg-warning text-dark fs-6">Time: {{ exam.duration }}:00</div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="exam-instructions" class="alert alert-info">
+                    <h6><i class="fas fa-info-circle me-2"></i>Exam Instructions</h6>
+                    <ul class="mb-0">
+                        <li>This exam contains questions from {{ exam.subject.name }}</li>
+                        <li>You have {{ exam.duration }} minutes to complete the exam</li>
+                        <li>Answer all questions before submitting</li>
+                        <li>You can navigate between questions using the buttons</li>
+                        <li>Your answers are saved automatically</li>
+                    </ul>
+                </div>
+
+                <div id="exam-container">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading exam...</span>
+                        </div>
+                        <p class="mt-3">Loading exam questions...</p>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <div class="row align-items-center">
+                        <div class="col-4 text-start">
+                            <button id="prev-btn" class="btn btn-secondary" disabled>
+                                <i class="fas fa-arrow-left me-2"></i>Previous
+                            </button>
+                        </div>
+                        <div class="col-4 text-center">
+                            <span id="question-counter" class="d-block mb-2">Question 0 of 0</span>
+                            <button id="submit-btn" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#submitModal">
+                                <i class="fas fa-paper-plane me-2"></i>Submit Exam
+                            </button>
+                        </div>
+                        <div class="col-4 text-end">
+                            <button id="next-btn" class="btn btn-primary">
+                                Next<i class="fas fa-arrow-right ms-2"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Submit Confirmation Modal -->
+<div class="modal fade" id="submitModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Submission</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to submit your exam?</p>
+                <p class="text-muted">Once submitted, you cannot make any changes to your answers.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirm-submit">
+                    <i class="fas fa-check me-2"></i>Yes, Submit Exam
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pre-start Modal (request fullscreen and camera) -->
+<div class="modal fade" id="preStartModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">About to start exam (Fullscreen)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>You are about to start the exam in full-screen mode. Do not exit the full-screen until you submit. Use "Previous" and "Next" to navigate questions. The exam is time-sensitive and will be auto-submitted when time expires.</p>
+                <p>The app will request permission to access your device camera to record the exam for integrity monitoring. Recording will be uploaded after submission.</p>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="allowCamera" checked>
+                    <label class="form-check-label" for="allowCamera">Allow camera recording</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="startExamBtn">Start Exam (Enter Fullscreen)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Simple calculator overlay -->
+<div id="calcOverlay" style="display:none;position:fixed;right:20px;bottom:20px;z-index:2000;width:260px;background:#fff;border:1px solid #ccc;padding:10px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <strong>Calculator</strong>
+        <button class="btn btn-sm btn-outline-secondary" id="closeCalc">X</button>
+    </div>
+    <input id="calcDisplay" class="form-control mb-2" readonly style="height:38px;font-size:18px;text-align:right;" />
+    <div class="d-grid" style="grid-template-columns:repeat(4,1fr);display:grid;gap:6px;">
+        <button class="btn btn-light calc-btn">7</button>
+        <button class="btn btn-light calc-btn">8</button>
+        <button class="btn btn-light calc-btn">9</button>
+        <button class="btn btn-warning calc-op">/</button>
+        <button class="btn btn-light calc-btn">4</button>
+        <button class="btn btn-light calc-btn">5</button>
+        <button class="btn btn-light calc-btn">6</button>
+        <button class="btn btn-warning calc-op">*</button>
+        <button class="btn btn-light calc-btn">1</button>
+        <button class="btn btn-light calc-btn">2</button>
+        <button class="btn btn-light calc-btn">3</button>
+        <button class="btn btn-warning calc-op">-</button>
+        <button class="btn btn-light calc-btn">0</button>
+        <button class="btn btn-light calc-btn">.</button>
+        <button class="btn btn-success" id="calcEq">=</button>
+        <button class="btn btn-warning calc-op">+</button>
+    </div>
+</div>
+
+<button id="toggleCalc" class="btn btn-outline-secondary" style="position:fixed;right:20px;bottom:300px;z-index:2000;">Calculator</button>
+
+<script>
+const examSessionId = {{ session_id }};
+const examDuration = {{ exam.duration }};
+let currentQuestionIndex = 0;
+let totalQuestions = 0;
+let timerInterval = null;
+let mediaStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+
+// Start the exam timer
+function startTimer() {
+    let timeLeft = examDuration * 60; // Convert to seconds
+    const timerElement = document.getElementById('exam-timer');
+    
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            submitExam();
+            return;
+        }
+        
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timerElement.textContent = `Time: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        // Change color when time is running out
+        if (timeLeft < 300) { // 5 minutes
+            timerElement.className = 'badge bg-danger fs-6';
+        }
+    }, 1000);
+}
+
+// Load a specific question
+function loadQuestion(index) {
+    fetch(`/api/exam/${examSessionId}/question/${index}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Question fetch error:', data.error);
+                const container = document.getElementById('exam-container');
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>Error Loading Question</h5>
+                        <p>${data.error}</p>
+                        <p class="text-muted">This usually means the exam questions were not properly created.</p>
+                        <a href="/student/dashboard" class="btn btn-secondary">Return to Dashboard</a>
+                    </div>
+                `;
+                return;
+            }
+            
+            totalQuestions = data.total_questions;
+            currentQuestionIndex = data.question_index;
+            
+            // Update question counter
+            document.getElementById('question-counter').textContent = 
+                `Question ${currentQuestionIndex + 1} of ${totalQuestions}`;
+            
+            // Enable/disable navigation buttons
+            document.getElementById('prev-btn').disabled = currentQuestionIndex === 0;
+            document.getElementById('next-btn').disabled = currentQuestionIndex === totalQuestions - 1;
+            
+                    // Render the question
+                    renderQuestion(data.question);
+        })
+        .catch(error => {
+            console.error('Error loading question:', error);
+            const container = document.getElementById('exam-container');
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <h5>Network Error</h5>
+                    <p>Failed to load question: ${error.message}</p>
+                    <p class="text-muted">Check browser console for details.</p>
+                    <a href="/student/dashboard" class="btn btn-secondary">Return to Dashboard</a>
+                </div>
+            `;
+        });
+}
+
+// Render question HTML
+function renderQuestion(question) {
+    const container = document.getElementById('exam-container');
+    
+    // If theory question, show long text area instead of options
+    if (question.is_theory) {
+        container.innerHTML = `
+            <div class="question-container">
+                <h5>Question ${currentQuestionIndex + 1} (${question.marks} mark${question.marks > 1 ? 's' : ''})</h5>
+                ${question.image_url ? `<div class="mb-3 text-center"><img src="${question.image_url}" alt="Question image" style="max-width:100%;max-height:360px;object-fit:contain;" /></div>` : ''}
+                <div class="card mb-4"><div class="card-body"><p class="card-text">${question.text}</p></div></div>
+                <h6>Your answer (long-form):</h6>
+                <textarea id="theory-answer" class="form-control" rows="8"></textarea>
+            </div>
+        `;
+        document.getElementById('theory-answer').addEventListener('blur', () => {
+            saveAnswer(document.getElementById('theory-answer').value);
+        });
+        return;
+    }
+    
+    let optionsHtml = question.options.map(option => `
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="radio" name="answer" 
+                   id="option-${option.letter}" value="${option.letter}"
+                   ${question.selected_answer === option.letter ? 'checked' : ''}>
+            <label class="form-check-label" for="option-${option.letter}">
+                <strong>${option.letter}.</strong> ${option.text}
+            </label>
+        </div>
+    `).join('');
+    
+    container.innerHTML = `
+        <div class="question-container">
+            <h5>Question ${currentQuestionIndex + 1} (${question.marks} mark${question.marks > 1 ? 's' : ''})</h5>
+            ${question.image_url ? `<div class="mb-3 text-center"><img src="${question.image_url}" alt="Question image" id="question-image" style="max-width:100%;max-height:360px;object-fit:contain;" /></div>` : ''}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p class="card-text">${question.text}</p>
+                </div>
+            </div>
+            
+            <h6>Select your answer:</h6>
+            <div class="options-container">
+                ${optionsHtml}
+            </div>
+        </div>
+    `;
+    
+    // Add event listeners to radio buttons
+    document.querySelectorAll('input[name="answer"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            saveAnswer(e.target.value);
+        });
+    });
+}
+
+// Save the current answer
+function saveAnswer(answer) {
+    fetch(`/api/exam/${examSessionId}/answer`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            question_index: currentQuestionIndex,
+            answer: answer
+        })
+    }).catch(error => {
+        console.error('Error saving answer:', error);
+    });
+}
+
+// Submit the exam
+async function submitExam() {
+    clearInterval(timerInterval);
+    // Stop media recorder if running
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        // Wait a short moment for dataavailable events
+        await new Promise(r => setTimeout(r, 500));
+        if (recordedChunks.length) {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const fd = new FormData();
+            const filename = `exam_${examSessionId}_recording_${Date.now()}.webm`;
+            fd.append('recording', blob, filename);
+            try {
+                await fetch(`/student/upload_recording/${examSessionId}`, { method: 'POST', body: fd });
+            } catch (e) { console.warn('Recording upload failed', e); }
+        }
+        // stop tracks
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+        }
+    }
+
+    fetch(`/api/exam/${examSessionId}/submit`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        // If server returned a post-submit message (temp login cleared), redirect to a submitted page
+        if (data.post_submit_message) {
+            // Redirect to a friendly submitted page which instructs the student to login to view results
+            window.location.href = '/start/submitted/' + data.session_id;
+            return;
+        }
+
+        // Otherwise redirect to results page (logged-in users)
+        window.location.href = '/student/results';
+    })
+    .catch(error => {
+        console.error('Error submitting exam:', error);
+        alert('Error submitting exam. Please try again.');
+    });
+}
+
+// Initialize the exam: show pre-start modal and setup handlers
+document.addEventListener('DOMContentLoaded', function() {
+    // Show pre-start instructions modal instead of auto-starting
+    const preModalEl = new bootstrap.Modal(document.getElementById('preStartModal'));
+    preModalEl.show();
+
+    // Set up navigation
+    document.getElementById('prev-btn').addEventListener('click', () => {
+        if (currentQuestionIndex > 0) {
+            loadQuestion(currentQuestionIndex - 1);
+        }
+    });
+    
+    document.getElementById('next-btn').addEventListener('click', () => {
+        if (currentQuestionIndex < totalQuestions - 1) {
+            loadQuestion(currentQuestionIndex + 1);
+        }
+    });
+    
+    // Set up submit confirmation
+    document.getElementById('confirm-submit').addEventListener('click', submitExam);
+
+    // Pre-start modal behaviours
+    document.getElementById('startExamBtn').addEventListener('click', async () => {
+        const allowCam = document.getElementById('allowCamera').checked;
+        // Request fullscreen
+        try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); } catch (e) {}
+        // Start camera recording if allowed
+        if (allowCam && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                recordedChunks = [];
+                mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'video/webm;codecs=vp9' });
+                mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
+                mediaRecorder.start(1000);
+            } catch (e) { console.warn('Camera not available', e); }
+        }
+        const preModal = bootstrap.Modal.getInstance(document.getElementById('preStartModal'));
+        preModal.hide();
+        // Hide the on-page exam instructions now that exam has started (fullscreen)
+        const instrEl = document.getElementById('exam-instructions');
+        if (instrEl) instrEl.style.display = 'none';
+        loadQuestion(0);
+        startTimer();
+    });
+
+    // Calculator UI
+    const toggleCalc = document.getElementById('toggleCalc');
+    if (toggleCalc) toggleCalc.addEventListener('click', () => { const el = document.getElementById('calcOverlay'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; });
+    document.querySelectorAll('.calc-btn').forEach(b => b.addEventListener('click', () => { document.getElementById('calcDisplay').value += b.textContent; }));
+    document.querySelectorAll('.calc-op').forEach(b => b.addEventListener('click', () => { document.getElementById('calcDisplay').value += b.textContent; }));
+    document.getElementById('calcEq').addEventListener('click', () => { try { const res = eval(document.getElementById('calcDisplay').value || '0'); document.getElementById('calcDisplay').value = String(res); } catch (e) { document.getElementById('calcDisplay').value = 'ERR'; } });
+});
+</script>
+{% endblock %}

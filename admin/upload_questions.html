@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">Upload Questions from Excel</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle me-2"></i>Excel File Format</h6>
+                    <p>Your Excel file should have the following columns:</p>
+                    <ul>
+                        <li><strong>Question</strong> - The question text (required)</li>
+                        <li><strong>Option A</strong> - First option (required)</li>
+                        <li><strong>Option B</strong> - Second option (required)</li>
+                        <li><strong>Option C</strong> - Third option (optional)</li>
+                        <li><strong>Option D</strong> - Fourth option (optional)</li>
+                        <li><strong>Option E</strong> - Fifth option (optional)</li>
+                        <li><strong>Correct Answer</strong> - The correct option (A, B, C, D, or E) (required)</li>
+                        <li><strong>Explanation</strong> - Explanation for the answer (optional)</li>
+                        <li><strong>Mark</strong> - Marks for the question (optional, default: 1)</li>
+                    </ul>
+                    <p class="mb-0">Download <a href="#" class="alert-link">sample template</a> for reference.</p>
+                </div>
+
+                <form method="POST" action="{{ url_for('upload_questions') }}" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="subject_id" class="form-label">Subject</label>
+                            <select class="form-select" id="subject_id" name="subject_id" required>
+                                <option value="">Select Subject</option>
+                                {% for subject in subjects %}
+                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="file" class="form-label">Excel File</label>
+                            <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
+                            <div class="form-text">Only .xlsx and .xls files are allowed</div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('admin_questions') }}" class="btn btn-secondary me-md-2">Cancel</a>
+                        <button type="submit" class="btn btn-success">Upload Questions</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

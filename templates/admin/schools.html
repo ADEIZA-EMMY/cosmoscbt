@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>Manage Schools</h3>
+    <a href="/admin/school/add" class="btn btn-primary mb-3">Add School</a>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Access Code</th>
+                <th>Contact</th>
+                <th>Restricted</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in schools %}
+            <tr>
+                <td>{{ s.id }}</td>
+                <td>{{ s.name }}</td>
+                <td>{{ s.code or '' }}</td>
+                <td>
+                    {{ s.access_code or '—' }}
+                    {% if s.access_code %}
+                        <button type="button" class="btn btn-outline-secondary btn-sm ms-2 copy-access-btn" data-code="{{ s.access_code }}" aria-label="Copy access code">Copy</button>
+                    {% endif %}
+                </td>
+                <td>{{ s.contact_email or '' }}</td>
+                <td>{{ 'Yes' if s.is_restricted else 'No' }}</td>
+                <td>
+                    <form method="post" action="/admin/school/toggle_restrict/{{ s.id }}" style="display:inline">
+                        <button class="btn btn-sm {% if s.is_restricted %}btn-success{% else %}btn-warning{% endif %}" onclick="return confirm('Toggle restrict for this school?')">{% if s.is_restricted %}Unrestrict{% else %}Restrict{% endif %}</button>
+                    </form>
+                    <form method="post" action="/admin/school/delete/{{ s.id }}" style="display:inline; margin-left:6px;">
+                        <button class="btn btn-danger btn-sm" onclick="return confirm('Delete school?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <script>
+    document.addEventListener('DOMContentLoaded', function(){
+        document.querySelectorAll('.copy-access-btn').forEach(function(btn){
+            btn.addEventListener('click', function(){
+                const code = this.dataset.code || '';
+                if(!code) return;
+                const el = this;
+                if(navigator.clipboard && navigator.clipboard.writeText){
+                    navigator.clipboard.writeText(code).then(function(){
+                        const orig = el.innerText;
+                        el.innerText = 'Copied';
+                        setTimeout(function(){ el.innerText = orig; }, 1400);
+                    }).catch(function(){ fallbackCopy(code, el); });
+                } else {
+                    fallbackCopy(code, el);
+                }
+            });
+        });
+        function fallbackCopy(text, btn){
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try{
+                document.execCommand('copy');
+                const orig = btn.innerText;
+                btn.innerText = 'Copied';
+                setTimeout(function(){ btn.innerText = orig; }, 1400);
+            }catch(e){
+                alert('Copy failed — select and copy manually');
+            }
+            document.body.removeChild(ta);
+        }
+    });
+    </script>
+</div>
+{% endblock %}

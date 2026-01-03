@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Add Student</h5>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, msg in messages %}
+                      <div class="alert alert-{{ category }}">{{ msg }}</div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                <form method="post" action="{{ url_for('admin_add_student') }}" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username (unique)</label>
+                        <input id="username" name="username" class="form-control" required placeholder="e.g. 100123">
+                    </div>
+                    <div class="mb-3">
+                        <label for="full_name" class="form-label">Full Name</label>
+                        <input id="full_name" name="full_name" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password (optional)</label>
+                        <input id="password" name="password" class="form-control" placeholder="Leave blank to set username as password">
+                    </div>
+                    <div class="mb-3">
+                        <label for="student_class" class="form-label">Class / Level</label>
+                        <select id="student_class" name="student_class" class="form-control">
+                            <option value="">-- Select Class (optional) --</option>
+                            {% if classes %}
+                                {% for cl in classes %}
+                                    <option value="{{ cl }}">{{ cl }}</option>
+                                {% endfor %}
+                            {% else %}
+                                <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+                                <option>SS1</option><option>SS2</option><option>SS3</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="gender" class="form-label">Gender</label>
+                        <select id="gender" name="gender" class="form-control">
+                            <option value="">Prefer not to say</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="passport" class="form-label">Passport / Photo (optional)</label>
+                        <input id="passport" name="passport" type="file" class="form-control" accept="image/*" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+                        <input type="hidden" id="passport_data" name="passport_data">
+                        <div class="mt-2 d-flex align-items-center">
+                            <button type="button" id="btn_upload" class="btn btn-outline-secondary btn-sm">Choose Photo</button>
+                            <button type="button" id="btn_camera" class="btn btn-outline-primary btn-sm ms-2">Use Camera</button>
+                            <button type="button" id="btn_remove" class="btn btn-outline-danger btn-sm ms-2" style="display:none;">Remove Photo</button>
+                            <span id="camera_preview" style="display:inline-block;margin-left:8px"></span>
+                        </div>
+
+                        <div id="camera_container" style="display:none;margin-top:8px">
+                            <video id="camera_video" autoplay playsinline style="max-width:100%;height:auto;border:1px solid #ccc"></video>
+                            <div class="mt-2">
+                                <button type="button" id="capture_btn" class="btn btn-primary btn-sm">Capture</button>
+                                <button type="button" id="close_camera" class="btn btn-secondary btn-sm">Close</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <a href="{{ url_for('admin_students') }}" class="btn btn-secondary me-2">Cancel</a>
+                        <button type="submit" class="btn btn-success">Create Student</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+;(function(){
+    function isMobileDevice(){
+        return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        const fileInput = document.getElementById('passport');
+        const btnUpload = document.getElementById('btn_upload');
+        const btnCamera = document.getElementById('btn_camera');
+        const btnRemove = document.getElementById('btn_remove');
+        const preview = document.getElementById('camera_preview');
+        const hidden = document.getElementById('passport_data');
+        const cameraContainer = document.getElementById('camera_container');
+        const video = document.getElementById('camera_video');
+        const captureBtn = document.getElementById('capture_btn');
+        const closeCamera = document.getElementById('close_camera');
+        let stream = null;
+        if(!fileInput) return;
+        function showPreview(dataUrl, size){ if(preview) preview.innerHTML = '<img src="'+dataUrl+'" style="width:'+ (size||64) +'px;height:'+ (size||64) +'px;object-fit:cover;border:1px solid #ddd;" />'; if(btnRemove) btnRemove.style.display=''; }
+        btnUpload && btnUpload.addEventListener('click', function(){ fileInput.removeAttribute('capture'); fileInput.click(); });
+        btnCamera && btnCamera.addEventListener('click', async function(){
+            if(!isMobileDevice() && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+                try{ stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'environment'}, audio:false }); video.srcObject = stream; cameraContainer.style.display=''; }
+                catch(e){ fileInput.setAttribute('capture','environment'); fileInput.click(); }
+            } else { fileInput.setAttribute('capture','environment'); fileInput.click(); }
+        });
+        captureBtn && captureBtn.addEventListener('click', function(){ try{ const w=video.videoWidth||640, h=video.videoHeight||480; const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h; const ctx=canvas.getContext('2d'); ctx.drawImage(video,0,0,w,h); const dataUrl=canvas.toDataURL('image/jpeg',0.9); try{ fileInput.value=''; }catch(e){} if(hidden) hidden.value=dataUrl; showPreview(dataUrl,96); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } cameraContainer.style.display='none'; }catch(e){ alert('Capture failed: '+(e&&e.message)); } });
+        closeCamera && closeCamera.addEventListener('click', function(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } cameraContainer.style.display='none'; });
+        fileInput.addEventListener('change', function(){ const f=this.files&&this.files[0]; if(!f) return; const fr=new FileReader(); fr.onload=function(e){ if(hidden) hidden.value=''; showPreview(e.target.result,96); }; fr.readAsDataURL(f); });
+        btnRemove && btnRemove.addEventListener('click', function(){ try{ fileInput.value=''; }catch(e){} if(hidden) hidden.value=''; if(preview) preview.innerHTML=''; if(btnRemove) btnRemove.style.display='none'; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } if(cameraContainer) cameraContainer.style.display='none'; });
+    });
+})();
+</script>
+{% endblock %}
