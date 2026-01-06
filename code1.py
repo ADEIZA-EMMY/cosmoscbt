@@ -47,6 +47,17 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 db = SQLAlchemy(app)
 
+
+# Ensure DB tables exist when the web process first receives a request.
+# This runs inside the web dyno so created tables are visible to that process.
+@app.before_first_request
+def _ensure_db_tables():
+    try:
+        db.create_all()
+        print('Ensured DB tables via db.create_all()')
+    except Exception as _e:
+        print('ensure db tables failed:', _e)
+
 # Ensure upload directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
