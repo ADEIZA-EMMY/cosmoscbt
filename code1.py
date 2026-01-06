@@ -246,6 +246,34 @@ def set_setting(key, value):
     return False
 
 
+# New table to record student account creations/logins so automated processes
+# (e.g. Heroku-side helpers) can reliably enumerate student accounts.
+class StudentLogin(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    username = db.Column(db.String(80), nullable=False)
+    # source: 'self' for self-registered, 'admin' when created by admin
+    source = db.Column(db.String(20), nullable=False, default='self')
+    created_by = db.Column(db.Integer, nullable=True)  # admin user id if created by admin
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+def _record_student_login(user, source='self', created_by=None):
+    try:
+        if not user or not getattr(user, 'id', None):
+            return False
+        sl = StudentLogin(user_id=user.id, username=user.username, source=source, created_by=created_by)
+        db.session.add(sl)
+        db.session.commit()
+        return True
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+    return False
+
+
 
 # Defensive schema updates for newly added columns (run at import)
 def _ensure_schema():
@@ -1249,6 +1277,10 @@ def register():
             user.school_id = school.id
         db.session.add(user)
         db.session.commit()
+        try:
+            _record_student_login(user, source='self', created_by=None)
+        except Exception:
+            pass
 
         flash('Registration successful! Please login.', 'success')
         return redirect(url_for('login'))
@@ -1674,6 +1706,10 @@ def admin_edit_class(class_id):
         sc.name = name
         try:
             db.session.commit()
+            try:
+                _record_student_login(user, source='admin', created_by=session.get('user_id'))
+            except Exception:
+                pass
             flash('Class updated', 'success')
         except Exception as e:
             db.session.rollback()
