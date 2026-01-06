@@ -179,3 +179,10 @@ body {
     /* Ensure images and attachments contrast */
     .community-post a.btn{ color:var(--text) }
         width: 220px !important;
+$APP='cosmoscbtapp'
+$IP='X.X.X.X'   # ipv4 from nslookup
+$URL="postgresql://postgres:ACTUAL_PASSWORD@$IP:5432/postgres?sslmode=require"
+heroku config:set DATABASE_URL="$URL" --app $APP$APP='cosmoscbtapp'
+$IP='X.X.X.X'   # ipv4 from nslookup
+$URL="postgresql://postgres:ACTUAL_PASSWORD@$IP:5432/postgres?sslmode=require"
+heroku config:set DATABASE_URL="$URL" --app $APP

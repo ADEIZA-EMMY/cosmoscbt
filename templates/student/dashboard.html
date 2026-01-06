@@ -85,14 +85,18 @@
                     <div class="list-group-item">
                         <div class="d-flex w-100 justify-content-between">
                             <h6 class="mb-1">{{ session.exam.title }}</h6>
-                            <span class="badge 
-                                {% if (session.score/session.exam.total_marks)*100 >= 80 %}bg-success
-                                {% elif (session.score/session.exam.total_marks)*100 >= 50 %}bg-warning
-                                {% else %}bg-danger{% endif %}">
-                                {{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%
-                            </span>
+                            {# Avoid division by zero if total_marks is missing or zero #}
+                            {% set tm = session.exam.total_marks if session.exam and session.exam.total_marks %}
+                            {% if tm %}
+                                {% set pct = (session.score / tm) * 100 %}
+                                <span class="badge {% if pct >= 80 %}bg-success{% elif pct >= 50 %}bg-warning{% else %}bg-danger{% endif %}">
+                                    {{ "%.1f"|format(pct) }}%
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">—</span>
+                            {% endif %}
                         </div>
-                        <p class="mb-1">{{ session.score }}/{{ session.exam.total_marks }}</p>
+                        <p class="mb-1">{{ session.score }}/{{ session.exam.total_marks or '—' }}</p>
                         <div class="mt-2">
                             <a href="/student/result/{{ session.id }}" class="btn btn-sm btn-info">View Details</a>
                         </div>
