@@ -1,5 +1,5 @@
 # app.py (Backend - Flask)
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -32,6 +32,34 @@ from sqlalchemy.exc import OperationalError
 
 app = Flask(__name__)
 application = app
+# Compatibility shim: some older/stripped Flask builds may not implement
+# `before_first_request`. Provide a safe fallback that registers the
+# callable on `before_request` but ensures it runs only once.
+if not hasattr(app, 'before_first_request'):
+    _first_request_flag = {'done': False}
+    def _install_before_first_request(func=None):
+        # If used as a decorator: @app.before_first_request
+        if func is None:
+            def decorator(f):
+                def _wrapper(*a, **kw):
+                    if not _first_request_flag['done']:
+                        try:
+                            f()
+                        finally:
+                            _first_request_flag['done'] = True
+                app.before_request(_wrapper)
+                return f
+            return decorator
+        else:
+            def _wrapper(*a, **kw):
+                if not _first_request_flag['done']:
+                    try:
+                        func()
+                    finally:
+                        _first_request_flag['done'] = True
+            app.before_request(_wrapper)
+            return func
+    app.before_first_request = _install_before_first_request
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 # Database URL resolution:
 # - By default the app uses the env var `DATABASE_URL` (e.g. Postgres on Heroku),
@@ -2709,6 +2737,60 @@ def admin_add_student():
     except Exception:
         classes = []
     return render_template('admin/add_student.html', classes=classes)
+
+
+@app.route('/heroku/save_student', methods=['POST'])
+def heroku_save_student():
+    """Secure helper route for Heroku-side scripts to create student accounts.
+
+    Requires environment variable `HEROKU_API_TOKEN` to be set on the deploy.
+    Accepts JSON or form data with fields: `username`, `password` (optional),
+    `full_name` (optional), `student_class` (optional), `school_id` (optional).
+    The token may be supplied via header `X-HEROKU-TOKEN` or form field `token`.
+    """
+    # Basic token check
+    token = request.headers.get('X-HEROKU-TOKEN') or request.form.get('token') or (request.get_json(silent=True) or {}).get('token')
+    expected = os.environ.get('HEROKU_API_TOKEN')
+    if not expected or not token or str(token) != str(expected):
+        return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+
+    data = request.get_json(silent=True) or request.form
+    username = (data.get('username') or '').strip()
+    if not username:
+        return jsonify({'ok': False, 'error': 'username required'}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({'ok': False, 'error': 'username exists'}), 409
+
+    password = (data.get('password') or username).strip()
+    full_name = data.get('full_name') or ''
+    student_class = data.get('student_class') or None
+    school_id = data.get('school_id') or None
+
+    try:
+        user = User(username=username, full_name=full_name, role='student')
+        user.set_password(password)
+        user.temp_password = password
+        if student_class:
+            user.student_class = student_class
+        if school_id:
+            try:
+                user.school_id = int(school_id)
+            except Exception:
+                user.school_id = None
+        db.session.add(user)
+        db.session.commit()
+        try:
+            _record_student_login(user, source='admin', created_by=None)
+        except Exception:
+            pass
+        return jsonify({'ok': True, 'id': user.id}), 201
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.route('/admin/student/<int:user_id>/delete', methods=['POST'])
