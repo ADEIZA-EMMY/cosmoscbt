@@ -62,19 +62,22 @@ if not hasattr(app, 'before_first_request'):
     app.before_first_request = _install_before_first_request
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 # Database URL resolution:
-# - By default the app uses the env var `DATABASE_URL` (e.g. Postgres on Heroku),
-#   otherwise falls back to a local SQLite file `cbt.db`.
-# - Set env `FORCE_SQLITE=1` to force using SQLite even if `DATABASE_URL` is present.
-if os.environ.get('FORCE_SQLITE') == '1':
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLITE_URL') or 'sqlite:///cbt.db'
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or os.environ.get('SQLITE_URL') or 'sqlite:///cbt.db'
+# - The app uses PostgreSQL only via the `DATABASE_URL` env var (e.g. Postgres on Heroku).
+# - Falls back to local PostgreSQL if `DATABASE_URL` is not set.
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'postgresql://cbt_user:Adeizaemma47@localhost:5432/cbt_app'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 db = SQLAlchemy(app)
 
+# Create all tables immediately on startup
+with app.app_context():
+    try:
+        db.create_all()
+        print('✓ Created database tables via db.create_all()')
+    except Exception as e:
+        print('✗ Failed to create tables:', e)
 
 # Ensure DB tables exist when the web process first receives a request.
 # This runs inside the web dyno so created tables are visible to that process.
@@ -180,7 +183,7 @@ def _exec_ddl(sql):
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'admin' or 'student'
     full_name = db.Column(db.String(100))
     # Optional gender field for students/admins (e.g. Male/Female/Other)
@@ -1564,17 +1567,7 @@ def get_schools_safe():
                 db.create_all()
             except Exception:
                 pass
-            # If the DB file exists but is zero-length or otherwise empty, remove it and recreate
-            db_path = None
-            uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
-            if uri.startswith('sqlite:///'):
-                db_path = uri.replace('sqlite:///', '')
-            if db_path and os.path.exists(db_path) and os.path.getsize(db_path) == 0:
-                try:
-                    os.remove(db_path)
-                    db.create_all()
-                except Exception:
-                    pass
+            # PostgreSQL database operations - no empty file handling needed
         try:
             db.session.rollback()
         except Exception:
