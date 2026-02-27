@@ -64,7 +64,7 @@ app.config['SECRET_KEY'] = 'your-secret-key-here'
 # Database URL resolution:
 # - The app uses PostgreSQL only via the `DATABASE_URL` env var (e.g. Postgres on Heroku).
 # - Falls back to local PostgreSQL if `DATABASE_URL` is not set.
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'postgresql://cbt_user:Adeizaemma47@localhost:5432/cbt_app'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
