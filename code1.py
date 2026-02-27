@@ -62,9 +62,19 @@ if not hasattr(app, 'before_first_request'):
     app.before_first_request = _install_before_first_request
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 # Database URL resolution:
-# - The app uses PostgreSQL only via the `DATABASE_URL` env var (e.g. Postgres on Heroku).
-# - Falls back to local PostgreSQL if `DATABASE_URL` is not set.
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') 
+# - The app uses PostgreSQL via the `DATABASE_URL` env var (e.g. Postgres on Heroku).
+# - SQLAlchemy 1.4+ requires the `postgresql://` scheme; Heroku may supply
+#   `postgres://` which triggers NoSuchModuleError (can't load plugin
+#   "sqlalchemy.dialects:postgres"). Normalize accordingly.
+# - Falls back to SQLite if `DATABASE_URL` is not set (for local development).
+_db_url = os.environ.get('DATABASE_URL')
+if _db_url and _db_url.startswith('postgres://'):
+    # replace only the first occurrence in case credentials contain the string
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
+else:
+    # Fallback to SQLite for local development
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///cbt.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
