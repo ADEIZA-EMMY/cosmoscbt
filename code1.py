@@ -95,9 +95,9 @@ def internal_error(e):
 with app.app_context():
     try:
         db.create_all()
-        print('✓ Created database tables via db.create_all()')
+        print('Created database tables via db.create_all()')
     except Exception as e:
-        print('✗ Failed to create tables:', e)
+        print('Failed to create tables:', e)
 
 # Ensure DB tables exist when the web process first receives a request.
 # This runs inside the web dyno so created tables are visible to that process.
