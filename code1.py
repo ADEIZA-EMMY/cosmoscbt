@@ -6094,16 +6094,12 @@ def take_exam(exam_id):
             return redirect(url_for('login'))
         
         exam = Exam.query.get_or_404(exam_id)
-    except Exception:
-        app.logger.exception('error fetching exam %r', exam_id)
-        flash('Could not load the requested exam. Please contact the administrator.', 'danger')
-        return redirect(url_for('student_dashboard'))
-    
-    # Check if student already has a COMPLETED or SUBMITTED session for this exam
-    # Historically we prevented students from restarting an exam if they had a completed
-    # session; for automated tests and retakes we allow creating a new session even
-    # if a completed session exists (administrator can still restrict retakes separately).
-    completed_session = ExamSession.query.filter(
+
+        # Check if student already has a COMPLETED or SUBMITTED session for this exam
+        # Historically we prevented students from restarting an exam if they had a completed
+        # session; for automated tests and retakes we allow creating a new session even
+        # if a completed session exists (administrator can still restrict retakes separately).
+        completed_session = ExamSession.query.filter(
         ExamSession.exam_id==exam_id,
         ExamSession.student_id==session['user_id'],
         ExamSession.status.in_(['submitted', 'completed'])
@@ -6172,6 +6168,12 @@ def take_exam(exam_id):
     session_id = exam_session.id
     
     return render_template('student/exam.html', exam=exam, session_id=session_id)
+
+    # catch-all for unexpected errors within take_exam
+    except Exception:
+        app.logger.exception('unexpected error in take_exam for exam_id %r', exam_id)
+        flash('An error occurred while starting the exam. Please contact the administrator.', 'danger')
+        return redirect(url_for('student_dashboard'))
 
 @app.route('/api/exam/<int:session_id>/question/<int:question_index>')
 def get_question(session_id, question_index):
