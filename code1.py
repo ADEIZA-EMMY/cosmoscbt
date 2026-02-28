@@ -96,6 +96,12 @@ with app.app_context():
     try:
         db.create_all()
         print('Created database tables via db.create_all()')
+        # Now run init_db to add missing columns and migrations
+        try:
+            init_db()
+            print('Ran init_db() migrations successfully')
+        except Exception as e:
+            print('init_db() migrations encountered issues:', e)
     except Exception as e:
         print('Failed to create tables:', e)
 
