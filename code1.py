@@ -524,6 +524,8 @@ class Exam(db.Model):
     # Multi-tenant support: school the exam belongs to (nullable for legacy data)
     school_id = db.Column(db.Integer, db.ForeignKey('school.id'), nullable=True)
     school = db.relationship('School', backref='exams')
+    # Store the school's unique code at time of exam creation for resilient tracing
+    school_code = db.Column(db.String(50), nullable=True, index=True)
     is_active = db.Column(db.Boolean, default=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -729,6 +731,33 @@ def init_db():
                                 db.session.commit()
                         except Exception:
                             db.session.rollback()
+                    except Exception:
+                        pass
+                # add a school_code column to allow tracing via the school's unique code
+                if 'school_code' not in ecols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)")
+                        print('Added school_code to exam table')
+                        # Backfill school_code from school_id or creator's school.code
+                        try:
+                            with app.app_context():
+                                for ex in Exam.query.all():
+                                    if ex.school_id:
+                                        sch = School.query.get(ex.school_id)
+                                        if sch and sch.code:
+                                            ex.school_code = sch.code
+                                    else:
+                                        creator = User.query.get(ex.created_by)
+                                        if creator and creator.school_id:
+                                            sch = School.query.get(creator.school_id)
+                                            if sch and sch.code:
+                                                ex.school_code = sch.code
+                                db.session.commit()
+                        except Exception:
+                            try:
+                                db.session.rollback()
+                            except Exception:
+                                pass
                     except Exception:
                         pass
         except Exception:
@@ -1673,11 +1702,19 @@ def exams_for_current_user():
         if not school_id:
             return []
         # same logic as exams_for_school but without the is_active check
+        try:
+            school_obj = School.query.get(school_id)
+            school_code = school_obj.code if school_obj else None
+        except Exception:
+            school_code = None
+
+        conds = [Exam.school_id == school_id]
+        if school_code:
+            conds.append(Exam.school_code == school_code)
+        conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
+
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
-            or_(
-                Exam.school_id == school_id,
-                and_(Exam.school_id.is_(None), User.school_id == school_id)
-            )
+            or_(*conds)
         ).order_by(Exam.created_at.desc()).all()
     except Exception:
         return []
@@ -2043,14 +2080,25 @@ def exams_for_school(school_id):
     try:
         if not school_id:
             return []
-        # Use outer join so we can check creator's school if exam.school_id is
-        # NULL.  We also filter out inactive exams here.
+        # Attempt to include exams explicitly tied to the school (school_id or school_code)
+        # and fall back to exams created by users in that school for legacy rows.
+        try:
+            school_obj = School.query.get(school_id)
+            school_code = school_obj.code if school_obj else None
+        except Exception:
+            school_code = None
+
+        conds = [Exam.is_active == True]
+        # explicit school_id match
+        conds.append(Exam.school_id == school_id)
+        # match by stored school_code if available
+        if school_code:
+            conds.append(Exam.school_code == school_code)
+        # legacy rows where exam.school_id is NULL but creator.user.school_id matches
+        conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
+
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
-            Exam.is_active == True,
-            or_(
-                Exam.school_id == school_id,
-                and_(Exam.school_id.is_(None), User.school_id == school_id)
-            )
+            or_(*conds)
         ).order_by(Exam.created_at.desc()).all()
     except Exception:
         return []
@@ -5458,6 +5506,16 @@ def add_exam():
         else:
             exam_school = effective_school
 
+        # Resolve school's unique code for tracing (if available)
+        exam_school_code = None
+        try:
+            if exam_school:
+                sch = School.query.get(exam_school)
+                if sch and getattr(sch, 'code', None):
+                    exam_school_code = sch.code
+        except Exception:
+            exam_school_code = None
+
         exam = Exam(
             subject_id=subject_id,
             title=title,
@@ -5469,7 +5527,8 @@ def add_exam():
             code=generate_unique_exam_code(),
             total_marks=total_marks,
             created_by=session['user_id'],
-            school_id=exam_school
+            school_id=exam_school,
+            school_code=exam_school_code
         )
 
         db.session.add(exam)
