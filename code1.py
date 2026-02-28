@@ -3994,52 +3994,39 @@ def community():
 
         # Ensure moderation columns exist (fallback ALTER) for older DBs
         try:
-            from sqlalchemy import text
-            res = db.session.execute(text("PRAGMA table_info('community_post')")).fetchall()
-            cols = [r[1] for r in res]
+            # use SQLAlchemy inspector so it works for both SQLite and Postgres
+            from sqlalchemy import inspect, text
+            inspector = inspect(db.engine)
+            cols = [c['name'] for c in inspector.get_columns('community_post')]
+            # perform ALTERs in their own transactions so a failure doesn't abort the
+            # surrounding session; explicitly rollback on error.
+            def _add_column(sql):
+                try:
+                    db.session.execute(text(sql))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
             if 'is_deleted' not in cols:
-                try:
-                    from sqlalchemy import text
-                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN is_deleted INTEGER DEFAULT 0"))
-                    db.session.commit()
-                except Exception:
-                    try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
+                _add_column("ALTER TABLE community_post ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE")
             if 'reports' not in cols:
-                try:
-                    from sqlalchemy import text
-                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN reports INTEGER DEFAULT 0"))
-                    db.session.commit()
-                except Exception:
-                    try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
+                _add_column("ALTER TABLE community_post ADD COLUMN reports INTEGER DEFAULT 0")
             if 'likes' not in cols:
-                try:
-                    from sqlalchemy import text
-                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN likes INTEGER DEFAULT 0"))
-                    db.session.commit()
-                except Exception:
-                    try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
+                _add_column("ALTER TABLE community_post ADD COLUMN likes INTEGER DEFAULT 0")
             if 'attachment' not in cols:
-                try:
-                    from sqlalchemy import text
-                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL"))
-                    db.session.commit()
-                except Exception:
-                    try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
+                _add_column("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL")
         except Exception:
-            # ignore issues inspecting the table; will be logged for investigation
+            # if inspection itself fails, rollback any partial transaction and log
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             app.logger.debug('could not inspect community_post table for migration', exc_info=True)
+
+        # make sure session is clean in case previous statements aborted
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
         posts = CommunityPost.query.order_by(CommunityPost.created_at.desc()).all()
         return render_template('community.html', posts=posts)
@@ -4048,104 +4035,6 @@ def community():
         flash('Unable to load community forum at the moment. Please try again later.', 'danger')
         return redirect(url_for('start'))
 
-    # Simple rate-limit: one post per 30 seconds per session
-    if request.method == 'POST':
-        last = session.get('last_community_post')
-        now = datetime.utcnow().timestamp()
-        if last and (now - float(last) < 30.0):
-            flash('Please wait before posting again (30s rate limit).', 'warning')
-            return redirect(url_for('community'))
-
-        name = (request.form.get('name') or '').strip()[:100]
-        content = (request.form.get('content') or '').strip()
-        # handle optional file upload
-        attachment_file = None
-        try:
-            attachment_file = request.files.get('attachment')
-        except Exception:
-            attachment_file = None
-        if not content:
-            flash('Comment cannot be empty', 'danger')
-            return redirect(url_for('community'))
-        try:
-            post = CommunityPost(author_name=name or 'Anonymous', content=content)
-            # save attachment if present
-            if attachment_file and getattr(attachment_file, 'filename', None):
-                fname = secure_filename(attachment_file.filename)
-                if fname:
-                    subdir = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'), 'community')
-                    os.makedirs(subdir, exist_ok=True)
-                    unique = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid4().hex}_{fname}"
-                    target = os.path.join(subdir, unique)
-                    try:
-                        attachment_file.save(target)
-                        # store relative path under uploads/
-                        post.attachment = os.path.join('community', unique).replace('\\', '/')
-                    except Exception:
-                        pass
-
-            db.session.add(post)
-            db.session.commit()
-            session['last_community_post'] = str(now)
-            flash('Comment posted', 'success')
-        except Exception:
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
-            flash('Failed to save comment', 'danger')
-        return redirect(url_for('community'))
-
-    # Ensure moderation columns exist (fallback ALTER) for older DBs
-    try:
-        from sqlalchemy import text
-        res = db.session.execute(text("PRAGMA table_info('community_post')")).fetchall()
-        cols = [r[1] for r in res]
-        if 'is_deleted' not in cols:
-            try:
-                from sqlalchemy import text
-                db.session.execute(text("ALTER TABLE community_post ADD COLUMN is_deleted INTEGER DEFAULT 0"))
-                db.session.commit()
-            except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-        if 'reports' not in cols:
-            try:
-                from sqlalchemy import text
-                db.session.execute(text("ALTER TABLE community_post ADD COLUMN reports INTEGER DEFAULT 0"))
-                db.session.commit()
-            except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-        if 'likes' not in cols:
-            try:
-                from sqlalchemy import text
-                db.session.execute(text("ALTER TABLE community_post ADD COLUMN likes INTEGER DEFAULT 0"))
-                db.session.commit()
-            except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-        if 'attachment' not in cols:
-            try:
-                from sqlalchemy import text
-                db.session.execute(text("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL"))
-                db.session.commit()
-            except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    posts = CommunityPost.query.order_by(CommunityPost.created_at.desc()).all()
-    return render_template('community.html', posts=posts)
 
 
 @app.route('/admin/community/moderate', methods=['GET'])
@@ -4154,33 +4043,30 @@ def admin_community_moderate():
     if 'user_id' not in session or not session.get('is_superadmin'):
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
-    # Ensure moderation columns exist (fallback ALTER)
+    # Ensure moderation columns exist (fallback ALTER) using inspector
     try:
-        from sqlalchemy import text
-        res = db.session.execute(text("PRAGMA table_info('community_post')")).fetchall()
-        cols = [r[1] for r in res]
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.engine)
+        cols = [c['name'] for c in inspector.get_columns('community_post')]
+        def _add(sql):
+            try:
+                db.engine.execute(text(sql))
+            except Exception:
+                pass
         if 'is_deleted' not in cols:
-            try:
-                db.engine.execute("ALTER TABLE community_post ADD COLUMN is_deleted INTEGER DEFAULT 0")
-            except Exception:
-                pass
+            _add("ALTER TABLE community_post ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE")
         if 'reports' not in cols:
-            try:
-                db.engine.execute("ALTER TABLE community_post ADD COLUMN reports INTEGER DEFAULT 0")
-            except Exception:
-                pass
+            _add("ALTER TABLE community_post ADD COLUMN reports INTEGER DEFAULT 0")
         if 'likes' not in cols:
-            try:
-                db.engine.execute("ALTER TABLE community_post ADD COLUMN likes INTEGER DEFAULT 0")
-            except Exception:
-                pass
+            _add("ALTER TABLE community_post ADD COLUMN likes INTEGER DEFAULT 0")
         if 'attachment' not in cols:
-            try:
-                db.engine.execute("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL")
-            except Exception:
-                pass
+            _add("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL")
     except Exception:
-        pass
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        app.logger.debug('failed to inspect/community migration in admin_moderate', exc_info=True)
 
     try:
         posts = CommunityPost.query.order_by(CommunityPost.created_at.desc()).all()
