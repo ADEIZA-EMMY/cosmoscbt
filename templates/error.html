@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Error{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <div class="alert alert-danger">
+        {{ message or "An unexpected error occurred." }}
+    </div>
+    <a href="{{ url_for('start') }}" class="btn btn-primary">Return to home</a>
+</div>
+{% endblock %}

@@ -81,6 +81,16 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 db = SQLAlchemy(app)
 
+# generic 500 error handler logs traceback and shows user-friendly page
+@app.errorhandler(500)
+def internal_error(e):
+    app.logger.exception('Unhandled exception:')
+    # if a template exists use it, otherwise just return text
+    try:
+        return render_template('error.html', message='An internal server error occurred; the administrator has been notified.'), 500
+    except Exception:
+        return 'Internal server error', 500
+
 # Create all tables immediately on startup
 with app.app_context():
     try:
@@ -3924,11 +3934,119 @@ def serve_uploads(filename):
 
 @app.route('/community', methods=['GET', 'POST'])
 def community():
-    # Ensure the table exists for lightweight deployments
+    # wrap everything so a bad database or schema issue doesn't blow up the whole app
     try:
-        db.create_all()
-    except Exception:
-        pass
+        # Ensure the table exists for lightweight deployments
+        try:
+            db.create_all()
+        except Exception:
+            # if create_all fails we still want to try querying; the real error will be logged
+            app.logger.debug('failed to run db.create_all() in community view', exc_info=True)
+
+        # Simple rate-limit: one post per 30 seconds per session
+        if request.method == 'POST':
+            last = session.get('last_community_post')
+            now = datetime.utcnow().timestamp()
+            if last and (now - float(last) < 30.0):
+                flash('Please wait before posting again (30s rate limit).', 'warning')
+                return redirect(url_for('community'))
+
+            name = (request.form.get('name') or '').strip()[:100]
+            content = (request.form.get('content') or '').strip()
+            # handle optional file upload
+            attachment_file = None
+            try:
+                attachment_file = request.files.get('attachment')
+            except Exception:
+                attachment_file = None
+            if not content:
+                flash('Comment cannot be empty', 'danger')
+                return redirect(url_for('community'))
+            try:
+                post = CommunityPost(author_name=name or 'Anonymous', content=content)
+                # save attachment if present
+                if attachment_file and getattr(attachment_file, 'filename', None):
+                    fname = secure_filename(attachment_file.filename)
+                    if fname:
+                        subdir = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'), 'community')
+                        os.makedirs(subdir, exist_ok=True)
+                        unique = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid4().hex}_{fname}"
+                        target = os.path.join(subdir, unique)
+                        try:
+                            attachment_file.save(target)
+                            # store relative path under uploads/
+                            post.attachment = os.path.join('community', unique).replace('\\', '/')
+                        except Exception:
+                            app.logger.exception('failed to save community attachment')
+
+                db.session.add(post)
+                db.session.commit()
+                session['last_community_post'] = str(now)
+                flash('Comment posted', 'success')
+            except Exception:
+                app.logger.exception('failed to create community post')
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                flash('Failed to save comment', 'danger')
+            return redirect(url_for('community'))
+
+        # Ensure moderation columns exist (fallback ALTER) for older DBs
+        try:
+            from sqlalchemy import text
+            res = db.session.execute(text("PRAGMA table_info('community_post')")).fetchall()
+            cols = [r[1] for r in res]
+            if 'is_deleted' not in cols:
+                try:
+                    from sqlalchemy import text
+                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN is_deleted INTEGER DEFAULT 0"))
+                    db.session.commit()
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+            if 'reports' not in cols:
+                try:
+                    from sqlalchemy import text
+                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN reports INTEGER DEFAULT 0"))
+                    db.session.commit()
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+            if 'likes' not in cols:
+                try:
+                    from sqlalchemy import text
+                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN likes INTEGER DEFAULT 0"))
+                    db.session.commit()
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+            if 'attachment' not in cols:
+                try:
+                    from sqlalchemy import text
+                    db.session.execute(text("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL"))
+                    db.session.commit()
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+        except Exception:
+            # ignore issues inspecting the table; will be logged for investigation
+            app.logger.debug('could not inspect community_post table for migration', exc_info=True)
+
+        posts = CommunityPost.query.order_by(CommunityPost.created_at.desc()).all()
+        return render_template('community.html', posts=posts)
+    except Exception as e:
+        app.logger.exception('unexpected error in community view')
+        flash('Unable to load community forum at the moment. Please try again later.', 'danger')
+        return redirect(url_for('start'))
 
     # Simple rate-limit: one post per 30 seconds per session
     if request.method == 'POST':
@@ -6084,11 +6202,16 @@ def start_submitted(session_id):
 
 @app.route('/student/exam/<int:exam_id>')
 def take_exam(exam_id):
-    if 'user_id' not in session or session['role'] != 'student':
-        flash('Access denied', 'danger')
-        return redirect(url_for('login'))
-    
-    exam = Exam.query.get_or_404(exam_id)
+    try:
+        if 'user_id' not in session or session['role'] != 'student':
+            flash('Access denied', 'danger')
+            return redirect(url_for('login'))
+        
+        exam = Exam.query.get_or_404(exam_id)
+    except Exception:
+        app.logger.exception('error fetching exam %r', exam_id)
+        flash('Could not load the requested exam. Please contact the administrator.', 'danger')
+        return redirect(url_for('student_dashboard'))
     
     # Check if student already has a COMPLETED or SUBMITTED session for this exam
     # Historically we prevented students from restarting an exam if they had a completed
@@ -6133,7 +6256,7 @@ def take_exam(exam_id):
         flash('No questions available for this exam', 'danger')
         return redirect(url_for('student_dashboard'))
     
-    print(f"DEBUG: Creating exam session with {len(questions)} questions for exam_id={exam_id}, subject_id={subj_id}")
+    app.logger.debug(f"Creating exam session with {len(questions)} questions for exam_id={exam_id}, subject_id={subj_id}")
     
     # Randomize questions
     random.shuffle(questions)
@@ -6159,7 +6282,7 @@ def take_exam(exam_id):
         db.session.add(answer)
     
     db.session.commit()
-    print(f"DEBUG: Created {len(questions)} answer records for session {exam_session.id}")
+    app.logger.debug(f"Created {len(questions)} answer records for session {exam_session.id}")
     session_id = exam_session.id
     
     return render_template('student/exam.html', exam=exam, session_id=session_id)
@@ -6177,7 +6300,7 @@ def get_question(session_id, question_index):
     # Get all answers for this session
     answers = Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all()
     
-    print(f"DEBUG get_question: session_id={session_id}, question_index={question_index}, total_answers={len(answers)}")
+    app.logger.debug(f"get_question: session_id={session_id}, question_index={question_index}, total_answers={len(answers)}")
     
     if len(answers) == 0:
         print(f"ERROR: No answers found for session {session_id}")
