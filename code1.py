@@ -1716,7 +1716,12 @@ def exams_for_current_user():
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
             or_(*school_conds)
         ).order_by(Exam.created_at.desc()).all()
-    except Exception:
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        app.logger.exception('Error in exams_for_current_user')
         return []
 
 
@@ -2099,7 +2104,12 @@ def exams_for_school(school_id):
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
             and_(Exam.is_active == True, or_(*school_conds))
         ).order_by(Exam.created_at.desc()).all()
-    except Exception:
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        app.logger.exception('Error in exams_for_school')
         return []
 
 
