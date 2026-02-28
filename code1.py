@@ -651,7 +651,12 @@ def generate_unique_exam_code(attempts=10):
     """Generate a unique six-digit numeric code for an exam."""
     for _ in range(attempts):
         code = '{:06d}'.format(random.randint(0, 999999))
-        if not Exam.query.filter_by(code=code).first():
+        try:
+            if not Exam.query.filter_by(code=code).first():
+                return code
+        except Exception:
+            # If query fails (e.g., missing columns), just return the code
+            # The columns will be created by migration
             return code
     # Fallback: deterministic based on timestamp
     return datetime.utcnow().strftime('%H%M%S')
@@ -1399,7 +1404,76 @@ def logout():
     flash('You have been logged out', 'info')
     return redirect(url_for('login'))
 
-# Admin Routes
+# Admin Routes - Database Migration
+@app.route('/admin/migrate-db', methods=['GET', 'POST'])
+def admin_migrate_db():
+    """Migration endpoint to add missing columns to exam table on Heroku."""
+    if 'user_id' not in session or not session.get('is_superadmin'):
+        if request.method == 'POST':
+            return jsonify({'error': 'Access denied'}), 403
+        return redirect(url_for('login'))
+    
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.engine)
+        results = {'added': [], 'skipped': []}
+        
+        if 'exam' in inspector.get_table_names():
+            exam_cols = [c['name'] for c in inspector.get_columns('exam')]
+            
+            # Add school_id if missing
+            if 'school_id' not in exam_cols:
+                try:
+                    db.session.execute(text("ALTER TABLE exam ADD COLUMN school_id INTEGER"))
+                    db.session.commit()
+                    results['added'].append('school_id')
+                except Exception as e:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+                    results['skipped'].append(f"school_id: {str(e)[:50]}")
+            
+            # Add school_code if missing
+            if 'school_code' not in exam_cols:
+                try:
+                    db.session.execute(text("ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)"))
+                    db.session.commit()
+                    results['added'].append('school_code')
+                except Exception as e:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+                    results['skipped'].append(f"school_code: {str(e)[:50]}")
+            
+            # Add is_active if missing
+            if 'is_active' not in exam_cols:
+                try:
+                    db.session.execute(text("ALTER TABLE exam ADD COLUMN is_active BOOLEAN DEFAULT true"))
+                    db.session.commit()
+                    results['added'].append('is_active')
+                except Exception as e:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+                    results['skipped'].append(f"is_active: {str(e)[:50]}")
+        
+        if request.method == 'POST':
+            return jsonify(results), 200
+        else:
+            return jsonify(results), 200
+    
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        if request.method == 'POST':
+            return jsonify({'error': str(e)[:100]}), 500
+        return jsonify({'error': str(e)[:100]}), 500
+
 @app.route('/admin/dashboard')
 def admin_dashboard():
     if 'user_id' not in session or session['role'] != 'admin':
@@ -5535,13 +5609,34 @@ def add_exam():
             allow_quick_start=True,
             code=generate_unique_exam_code(),
             total_marks=total_marks,
-            created_by=session['user_id'],
-            school_id=exam_school,
-            school_code=exam_school_code
+            created_by=session['user_id']
         )
+        
+        # Try to set school fields if columns exist
+        try:
+            exam.school_id = exam_school
+            exam.school_code = exam_school_code
+        except Exception:
+            pass  # Columns don't exist yet; will be added by migration
 
-        db.session.add(exam)
-        db.session.commit()
+        try:
+            db.session.add(exam)
+            db.session.commit()
+            app.logger.info(f"Exam '{title}' created successfully with id={exam.id}")
+        except Exception as e:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            # If it's a column error, suggest migration
+            if 'school_id' in str(e) or 'school_code' in str(e):
+                flash('Database schema needs update. Please contact admin to run migration.', 'warning')
+                app.logger.error(f"Exam creation failed due to missing columns: {str(e)[:100]}")
+                return redirect(url_for('add_exam'))
+            else:
+                flash(f'Error creating exam: {str(e)[:100]}', 'danger')
+                app.logger.error(f"Error creating exam: {str(e)}")
+                return redirect(url_for('add_exam'))
 
         flash('Exam created successfully', 'success')
         return redirect(url_for('admin_exams'))
