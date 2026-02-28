@@ -24,6 +24,7 @@
 				<th>Code</th>
 				<th>Subject</th>
 				<th>Class</th>
+				{% if session.get('is_superadmin') %}<th>School</th>{% endif %}
 				<th>Duration</th>
 				<th>Actions</th>
 			</tr>
@@ -36,6 +37,13 @@
 				<td>{{ exam.code or '—' }}</td>
 				<td>{{ exam.subject.name }}</td>
 				<td>{{ exam.subject_class or exam.subject.subject_class or '—' }}</td>
+				{% if session.get('is_superadmin') %}
+					{% if exam.school %}
+					<td>{{ exam.school.name }}</td>
+					{% else %}
+					<td>—</td>
+					{% endif %}
+				{% endif %}
 				<td>{{ exam.duration }} min</td>
 				<td>
 					<a href="{{ url_for('admin_view_exam', exam_id=exam.id) }}" class="btn btn-sm btn-primary">View</a>

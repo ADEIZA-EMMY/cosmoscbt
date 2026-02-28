@@ -20,6 +20,17 @@
 				<div class="row">
 					<div class="col-md-7">
 						<form method="POST">
+						{% if session.get('is_superadmin') %}
+						  <div class="mb-3">
+						    <label class="form-label">School</label>
+						    <select name="school_id" class="form-select">
+						      <option value="">(select school)</option>
+						      {% for s in schools %}
+						        <option value="{{ s.id }}">{{ s.name }}</option>
+						      {% endfor %}
+						    </select>
+						  </div>
+						{% endif %}
 							<div class="mb-3">
 								<label class="form-label">Subject</label>
 								<select class="form-select" name="subject_id" id="subject_id" required>

@@ -26,7 +26,7 @@ except Exception:
 # Optional HTTP client for AI integration
 import json
 import re
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import OperationalError
 
 
@@ -521,6 +521,9 @@ class Exam(db.Model):
     subject_class = db.Column(db.String(50), nullable=True)
     # Optional comma-separated list of classes allowed to take this exam
     allowed_classes = db.Column(db.String(500), nullable=True)
+    # Multi-tenant support: school the exam belongs to (nullable for legacy data)
+    school_id = db.Column(db.Integer, db.ForeignKey('school.id'), nullable=True)
+    school = db.relationship('School', backref='exams')
     is_active = db.Column(db.Boolean, default=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -709,6 +712,23 @@ def init_db():
                     try:
                         _exec_ddl("ALTER TABLE exam ADD COLUMN allowed_classes TEXT")
                         print('Added allowed_classes to exam table')
+                    except Exception:
+                        pass
+                # add school_id for multi-tenant support
+                if 'school_id' not in ecols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN school_id INTEGER")
+                        print('Added school_id to exam table')
+                        # backfill existing rows based on creator's school if possible
+                        try:
+                            with app.app_context():
+                                for ex in Exam.query.filter(Exam.school_id.is_(None)).all():
+                                    creator = User.query.get(ex.created_by)
+                                    if creator and creator.school_id:
+                                        ex.school_id = creator.school_id
+                                db.session.commit()
+                        except Exception:
+                            db.session.rollback()
                     except Exception:
                         pass
         except Exception:
@@ -1652,7 +1672,13 @@ def exams_for_current_user():
         school_id = _get_effective_school_id()
         if not school_id:
             return []
-        return Exam.query.join(User, Exam.created_by == User.id).filter(User.school_id == school_id).order_by(Exam.created_at.desc()).all()
+        # same logic as exams_for_school but without the is_active check
+        return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
+            or_(
+                Exam.school_id == school_id,
+                and_(Exam.school_id.is_(None), User.school_id == school_id)
+            )
+        ).order_by(Exam.created_at.desc()).all()
     except Exception:
         return []
 
@@ -2008,11 +2034,24 @@ def admin_delete_selected_classes():
 
 
 def exams_for_school(school_id):
-    """Return exams created by users belonging to the given school."""
+    """Return exams visible to the given school.
+
+    Newer records have `Exam.school_id` set. Legacy rows may rely on
+    the creator's user.school_id; we include both cases so existing
+    data continues to work until a backfill is run.
+    """
     try:
         if not school_id:
             return []
-        return Exam.query.join(User, Exam.created_by == User.id).filter(User.school_id == school_id, Exam.is_active == True).order_by(Exam.created_at.desc()).all()
+        # Use outer join so we can check creator's school if exam.school_id is
+        # NULL.  We also filter out inactive exams here.
+        return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
+            Exam.is_active == True,
+            or_(
+                Exam.school_id == school_id,
+                and_(Exam.school_id.is_(None), User.school_id == school_id)
+            )
+        ).order_by(Exam.created_at.desc()).all()
     except Exception:
         return []
 
@@ -2022,6 +2061,10 @@ def exam_belongs_to_school(exam_id, school_id):
         exam = Exam.query.get(exam_id)
         if not exam:
             return False
+        # check explicit school_id first
+        if exam.school_id:
+            return int(exam.school_id) == int(school_id)
+        # fall back to creator's school
         creator = User.query.get(exam.created_by)
         if not creator:
             return False
@@ -5402,6 +5445,19 @@ def add_exam():
                 questions = Question.query.filter_by(subject_id=subject_id).all()
         total_marks = sum(int(q.marks or 0) for q in questions)
 
+        # Determine school for the new exam
+        exam_school = None
+        effective_school = _get_effective_school_id()
+        if session.get('is_superadmin'):
+            # superadmin may optionally pick a school from the form
+            form_sid = request.form.get('school_id')
+            try:
+                exam_school = int(form_sid) if form_sid else effective_school
+            except Exception:
+                exam_school = effective_school
+        else:
+            exam_school = effective_school
+
         exam = Exam(
             subject_id=subject_id,
             title=title,
@@ -5412,7 +5468,8 @@ def add_exam():
             allow_quick_start=True,
             code=generate_unique_exam_code(),
             total_marks=total_marks,
-            created_by=session['user_id']
+            created_by=session['user_id'],
+            school_id=exam_school
         )
 
         db.session.add(exam)
@@ -5426,6 +5483,13 @@ def add_exam():
         question_sets = QuestionSet.query.order_by(QuestionSet.created_at.desc()).all()
     except Exception:
         question_sets = []
+    # If superadmin allow selecting a school when creating exam
+    schools = []
+    try:
+        if session.get('is_superadmin'):
+            schools = School.query.order_by(School.name).all()
+    except Exception:
+        schools = []
 
     # Build quick stats for subjects and question sets to show counts and total marks in the UI
     # Include per-class breakdown so client-side preview can reflect selected class
@@ -5473,7 +5537,16 @@ def add_exam():
     except Exception:
         qset_stats = {}
 
-    return render_template('admin/add_exam.html', subjects=subjects, classes=classes, question_sets=question_sets, subject_stats=subject_stats, qset_stats=qset_stats)
+    # include schools list for superadmin (may be empty for regular admins)
+    return render_template(
+        'admin/add_exam.html',
+        subjects=subjects,
+        classes=classes,
+        question_sets=question_sets,
+        subject_stats=subject_stats,
+        qset_stats=qset_stats,
+        schools=schools
+    )
 
 @app.route('/admin/results')
 def admin_results():
@@ -6089,87 +6162,66 @@ def start_submitted(session_id):
 @app.route('/student/exam/<int:exam_id>')
 def take_exam(exam_id):
     try:
+        # make sure user is a logged‑in student
         if 'user_id' not in session or session['role'] != 'student':
             flash('Access denied', 'danger')
             return redirect(url_for('login'))
-        
+
         exam = Exam.query.get_or_404(exam_id)
 
-        # Check if student already has a COMPLETED or SUBMITTED session for this exam
-        # Historically we prevented students from restarting an exam if they had a completed
-        # session; for automated tests and retakes we allow creating a new session even
-        # if a completed session exists (administrator can still restrict retakes separately).
+        # check for existing completed/submitted session
         completed_session = ExamSession.query.filter(
-        ExamSession.exam_id==exam_id,
-        ExamSession.student_id==session['user_id'],
-        ExamSession.status.in_(['submitted', 'completed'])
-    ).first()
-    if completed_session:
-        # Do not allow students to retake an exam once submitted/completed.
-        # Only an administrator can unlock/remove completed sessions to permit a retake.
-        flash('You have already completed this exam. Contact the administrator to request a retake.', 'danger')
-        return redirect(url_for('student_dashboard'))
-    
-    # Check for in-progress session - restart it with fresh question set
-    active_session = ExamSession.query.filter_by(
-        exam_id=exam_id, 
-        student_id=session['user_id'],
-        status='in_progress'
-    ).first()
-    
-    if active_session:
-        # Delete the old session and its answers to create a fresh one
-        Answer.query.filter_by(exam_session_id=active_session.id).delete()
-        db.session.delete(active_session)
-        db.session.commit()
-    
-    # Create new exam session with all questions
-    # ensure subject_id types match and fetch questions
-    try:
-        subj_id = int(exam.subject_id)
-    except Exception:
-        subj_id = exam.subject_id
+            ExamSession.exam_id==exam_id,
+            ExamSession.student_id==session['user_id'],
+            ExamSession.status.in_(['submitted', 'completed'])
+        ).first()
+        if completed_session:
+            flash('You have already completed this exam. Contact the administrator to request a retake.', 'danger')
+            return redirect(url_for('student_dashboard'))
 
-    questions = Question.query.filter_by(subject_id=subj_id).all()
+        # restart any in-progress session
+        active_session = ExamSession.query.filter_by(
+            exam_id=exam_id,
+            student_id=session['user_id'],
+            status='in_progress'
+        ).first()
+        if active_session:
+            Answer.query.filter_by(exam_session_id=active_session.id).delete()
+            db.session.delete(active_session)
+            db.session.commit()
 
-    if not questions:
-        # log debugging info to console to help diagnose
-        print(f"DEBUG: exam_id={exam_id} subject_id={exam.subject_id} (type={type(exam.subject_id)}) -> questions_found=0 total_questions_in_db={Question.query.count()}")
-        flash('No questions available for this exam', 'danger')
-        return redirect(url_for('student_dashboard'))
-    
-    app.logger.debug(f"Creating exam session with {len(questions)} questions for exam_id={exam_id}, subject_id={subj_id}")
-    
-    # Randomize questions
-    random.shuffle(questions)
-    
-    exam_session = ExamSession(
-        exam_id=exam_id,
-        student_id=session['user_id'],
-        start_time=datetime.utcnow(),
-        status='in_progress'
-    )
-    
-    db.session.add(exam_session)
-    db.session.commit()
-    
-    # Create answer records for all questions
-    for idx, question in enumerate(questions):
-        answer = Answer(
-            exam_session_id=exam_session.id,
-            question_id=question.id,
-            selected_answer=None,
-            is_correct=None
+        # build new exam session
+        try:
+            subj_id = int(exam.subject_id)
+        except Exception:
+            subj_id = exam.subject_id
+        questions = Question.query.filter_by(subject_id=subj_id).all()
+        if not questions:
+            app.logger.debug("no questions for exam %r subject %r", exam_id, subj_id)
+            flash('No questions available for this exam', 'danger')
+            return redirect(url_for('student_dashboard'))
+
+        random.shuffle(questions)
+        exam_session = ExamSession(
+            exam_id=exam_id,
+            student_id=session['user_id'],
+            start_time=datetime.utcnow(),
+            status='in_progress'
         )
-        db.session.add(answer)
-    
-    db.session.commit()
-    app.logger.debug(f"Created {len(questions)} answer records for session {exam_session.id}")
-    session_id = exam_session.id
-    
-    return render_template('student/exam.html', exam=exam, session_id=session_id)
+        db.session.add(exam_session)
+        db.session.commit()
 
-    # catch-all for unexpected errors within take_exam
+        for question in questions:
+            db.session.add(Answer(
+                exam_session_id=exam_session.id,
+                question_id=question.id,
+                selected_answer=None,
+                is_correct=None
+            ))
+        db.session.commit()
+        app.logger.debug('created %d answers for session %d', len(questions), exam_session.id)
+        return render_template('student/exam.html', exam=exam, session_id=exam_session.id)
+
     except Exception:
         app.logger.exception('unexpected error in take_exam for exam_id %r', exam_id)
         flash('An error occurred while starting the exam. Please contact the administrator.', 'danger')
