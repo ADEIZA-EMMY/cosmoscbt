@@ -1708,13 +1708,13 @@ def exams_for_current_user():
         except Exception:
             school_code = None
 
-        conds = [Exam.school_id == school_id]
+        school_conds = [Exam.school_id == school_id]
         if school_code:
-            conds.append(Exam.school_code == school_code)
-        conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
+            school_conds.append(Exam.school_code == school_code)
+        school_conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
 
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
-            or_(*conds)
+            or_(*school_conds)
         ).order_by(Exam.created_at.desc()).all()
     except Exception:
         return []
@@ -2088,17 +2088,16 @@ def exams_for_school(school_id):
         except Exception:
             school_code = None
 
-        conds = [Exam.is_active == True]
-        # explicit school_id match
-        conds.append(Exam.school_id == school_id)
-        # match by stored school_code if available
+        # Build school matching conditions
+        school_conds = [Exam.school_id == school_id]
         if school_code:
-            conds.append(Exam.school_code == school_code)
+            school_conds.append(Exam.school_code == school_code)
         # legacy rows where exam.school_id is NULL but creator.user.school_id matches
-        conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
+        school_conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
 
+        # Filter: is_active AND (matches one of the school conditions)
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
-            or_(*conds)
+            and_(Exam.is_active == True, or_(*school_conds))
         ).order_by(Exam.created_at.desc()).all()
     except Exception:
         return []
