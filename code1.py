@@ -1607,6 +1607,7 @@ def admin_dashboard():
     schools = get_schools_safe()
     # CRITICAL FIX: Include recent exam sessions (not just recordings) for this admin's school
     recordings = []
+    answers_by_session = {}
     try:
         exam_ids = [e.id for e in exams]
         if exam_ids:
@@ -1635,11 +1636,28 @@ def admin_dashboard():
                     'status': getattr(sess, 'status', 'pending'),
                     'marks_obtained': getattr(sess, 'score', None)
                 })
+                # pre-fetch answers for this session for modal display
+                try:
+                    raw_answers = Answer.query.filter_by(exam_session_id=sess.id).order_by(Answer.id).all()
+                    answers_list = []
+                    for a in raw_answers:
+                        q = Question.query.get(a.question_id)
+                        answers_list.append({
+                            'question': q,
+                            'selected_answer': a.selected_answer,
+                            'is_correct': a.is_correct,
+                            'text_response': getattr(a, 'text_response', None),
+                            'marks': getattr(q, 'marks', None)
+                        })
+                    answers_by_session[sess.id] = answers_list
+                except Exception:
+                    answers_by_session[sess.id] = []
     except Exception as e:
         app.logger.error(f'Error loading exam sessions: {e}')
         recordings = []
+        answers_by_session = {}
 
-    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, classes=classes, selected_class=selected_class)
+    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, classes=classes, selected_class=selected_class, answers_by_session=answers_by_session)
 
 
 def _require_superadmin():

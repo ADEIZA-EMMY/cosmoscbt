@@ -10,7 +10,7 @@
         <h5 class="mb-0">All Completed Exams</h5>
     </div>
     <div class="card-body">
-        {% if exam_sessions %}
+        {% if recordings %}
         <div class="table-responsive">
             <table class="table table-striped">
                 <thead>
@@ -25,23 +25,22 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for session in exam_sessions %}
+                    {% for session in recordings %}
                     <tr>
-                        <td>{{ session.student.full_name }}</td>
-                        <td>{{ session.exam.title }}</td>
-                        <td>{{ session.exam.subject.name }}</td>
-                        <td>
-                            <strong>{{ session.score }}/{{ session.exam.total_marks }}</strong>
-                            ({{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%)
-                        </td>
-                        <td>
-                            {% if session.end_time %}
-                                {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} mins
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
-                        <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ session.student_full_name }}</td>
+                            <td>{{ session.filename_basename }}</td>
+                            <td>{{ session.exam_id and ( (exams|selectattr('id','equalto', session.exam_id)|list)[0].subject.name ) or 'N/A' }}</td>
+                            <td>
+                                <strong>{{ session.marks_obtained or 'N/A' }}</strong>
+                            </td>
+                            <td>
+                                {% if session.uploaded_at %}
+                                    {{ session.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td>{{ session.uploaded_at.strftime('%Y-%m-%d %H:%M') if session.uploaded_at else 'N/A' }}</td>
                         <td>
                             <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#resultModal{{ session.id }}">
                                 <i class="fas fa-chart-bar"></i> Details
@@ -60,10 +59,10 @@
                                 <div class="modal-body">
                                     <div class="row">
                                         <div class="col-md-6">
-                                            <strong>Student:</strong> {{ session.student.full_name }}
+                                            <strong>Student:</strong> {{ session.student_full_name }}
                                         </div>
                                         <div class="col-md-6">
-                                            <strong>Username:</strong> {{ session.student.username }}
+                                            <strong>Username:</strong> {{ session.student_username }}
                                         </div>
                                     </div>
                                     <div class="row mt-2">
@@ -102,29 +101,27 @@
                                     </div>
                                     
                                     <hr>
-                                    <h6>Performance Summary:</h6>
-                                    <div class="progress mb-3" style="height: 30px;">
-                                        <div class="progress-bar bg-success" role="progressbar" 
-                                             style="width: {{ (session.score/session.exam.total_marks)*100 }}%;"
-                                             aria-valuenow="{{ (session.score/session.exam.total_marks)*100 }}" 
-                                             aria-valuemin="0" aria-valuemax="100">
-                                            {{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="alert 
-                                        {% if (session.score/session.exam.total_marks)*100 >= 80 %}alert-success
-                                        {% elif (session.score/session.exam.total_marks)*100 >= 50 %}alert-warning
-                                        {% else %}alert-danger{% endif %}">
-                                        <i class="fas fa-{% if (session.score/session.exam.total_marks)*100 >= 80 %}trophy
-                                        {% elif (session.score/session.exam.total_marks)*100 >= 50 %}check-circle
-                                        {% else %}exclamation-circle{% endif %} me-2"></i>
-                                        {% if (session.score/session.exam.total_marks)*100 >= 80 %}
-                                        Excellent performance! The student has scored very well.
-                                        {% elif (session.score/session.exam.total_marks)*100 >= 50 %}
-                                        Good attempt. There's room for improvement.
+                                    <h6>Answers</h6>
+                                    <div class="mb-2">
+                                        {% set answers = answers_by_session.get(session.id, []) %}
+                                        {% if answers %}
+                                            <div class="list-group">
+                                                {% for a in answers %}
+                                                    <div class="list-group-item">
+                                                        <strong>Q{{ loop.index }}.</strong> {{ a.question.question_text }}
+                                                        <div class="mt-2">
+                                                            {% if a.question.is_theory %}
+                                                                <div class="border p-2 bg-light" style="white-space:pre-wrap;">{{ a.text_response or '(no response)' }}</div>
+                                                            {% else %}
+                                                                <span>Selected: <strong>{{ a.selected_answer or '(none)' }}</strong></span>
+                                                                <span class="ms-3">Correct: <strong>{{ 'Yes' if a.is_correct else 'No' }}</strong></span>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
                                         {% else %}
-                                        Needs improvement. Consider additional study and practice.
+                                            <p class="text-muted">No answers available for this session.</p>
                                         {% endif %}
                                     </div>
                                 </div>
