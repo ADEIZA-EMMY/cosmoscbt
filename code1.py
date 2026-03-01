@@ -469,6 +469,22 @@ def _ensure_schema():
         except Exception:
             pass
 
+    # Ensure exam.question_set_id column exists (added to link exams to question sets)
+    try:
+        db.session.execute('SELECT question_set_id FROM exam LIMIT 1')
+    except Exception as e:
+        msg = str(e).lower()
+        if 'no such column' in msg and 'question_set_id' in msg:
+            try:
+                db.engine.execute('ALTER TABLE exam ADD COLUMN question_set_id INTEGER')
+                print('Added exam.question_set_id column via fallback ALTER')
+            except Exception as _:
+                print('Failed to add exam.question_set_id column:', str(_))
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
 
 _ensure_schema()
 
@@ -564,6 +580,9 @@ class Exam(db.Model):
     # Store the school's unique code at time of exam creation for resilient tracing
     school_code = db.Column(db.String(50), nullable=True, index=True)
     is_active = db.Column(db.Boolean, default=True)
+    # Link to a specific question set (if exam was created from uploaded questions)
+    question_set_id = db.Column(db.Integer, db.ForeignKey('question_set.id'), nullable=True)
+    question_set = db.relationship('QuestionSet', backref='exams_using_set')
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Optional cover/diagram image for the exam
@@ -5655,6 +5674,7 @@ def add_exam():
             is_active=True,
             code=generate_unique_exam_code(),
             total_marks=total_marks,
+            question_set_id=qset_id_int,
             created_by=session['user_id']
         )
         
@@ -6404,9 +6424,19 @@ def take_exam(exam_id):
             subj_id = int(exam.subject_id)
         except Exception:
             subj_id = exam.subject_id
-        questions = Question.query.filter_by(subject_id=subj_id).all()
+        
+        # If exam is linked to a question_set, fetch questions from that set
+        # Otherwise fetch from the subject
+        try:
+            if getattr(exam, 'question_set_id', None):
+                questions = Question.query.filter_by(question_set_id=exam.question_set_id).all()
+            else:
+                questions = Question.query.filter_by(subject_id=subj_id).all()
+        except Exception:
+            questions = Question.query.filter_by(subject_id=subj_id).all()
+        
         if not questions:
-            app.logger.debug("no questions for exam %r subject %r", exam_id, subj_id)
+            app.logger.debug("no questions for exam %r subject %r qset %r", exam_id, subj_id, getattr(exam, 'question_set_id', None))
             flash('No questions available for this exam', 'danger')
             return redirect(url_for('student_dashboard'))
 
