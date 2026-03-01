@@ -5635,11 +5635,25 @@ def add_exam():
         return redirect(url_for('login'))
     
     subjects = subjects_for_current_user()
-    # Prepare classes list (existing subject_class values + common defaults)
+    # Build classes list from three sources: subject_class values, StudentClass table, and common defaults
     try:
         existing_classes = [s.subject_class for s in subjects if getattr(s, 'subject_class', None)]
     except Exception:
         existing_classes = []
+    
+    # Get all dynamically created classes from StudentClass table for this school
+    admin_school_id = _get_effective_school_id()
+    try:
+        if admin_school_id:
+            student_classes = StudentClass.query.filter(
+                (StudentClass.school_id == admin_school_id) | (StudentClass.school_id.is_(None))
+            ).all()
+        else:
+            student_classes = StudentClass.query.filter(StudentClass.school_id.is_(None)).all()
+        existing_classes.extend([sc.name for sc in student_classes if sc.name])
+    except Exception:
+        pass
+    
     common_classes = [
         'JSS1','JSS2','JSS3',
         'SS1','SS2','SS3',

@@ -21,6 +21,11 @@
             <a class="navbar-brand" href="/">CBT System</a>
             <div class="d-flex">
                 <a href="{{ url_for('start') }}" class="btn btn-outline-light btn-sm me-2">Start Exam</a>
+                {% if session.get('role') == 'admin' %}
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-light btn-sm me-2">📊 Dashboard</a>
+                {% elif session.get('role') == 'student' %}
+                <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-light btn-sm me-2">📊 Dashboard</a>
+                {% endif %}
                 {% if session.get('username') %}
                 <span class="navbar-text text-white me-3">{{ session.get('full_name', session.get('username')) }}</span>
                 {% if session.get('role') == 'superadmin' %}
