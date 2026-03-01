@@ -5625,15 +5625,15 @@ def add_exam():
             inspector = inspect(db.engine)
             exam_cols = [c['name'] for c in inspector.get_columns('exam')]
             
-            # Add missing columns explicitly
+            # Add missing columns explicitly using _exec_ddl
             if 'school_id' not in exam_cols:
-                db.engine.execute('ALTER TABLE exam ADD COLUMN school_id INTEGER')
+                _exec_ddl('ALTER TABLE exam ADD COLUMN school_id INTEGER')
             if 'school_code' not in exam_cols:
-                db.engine.execute('ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)')
+                _exec_ddl('ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)')
             if 'is_active' not in exam_cols:
-                db.engine.execute('ALTER TABLE exam ADD COLUMN is_active BOOLEAN DEFAULT true')
+                _exec_ddl('ALTER TABLE exam ADD COLUMN is_active BOOLEAN DEFAULT true')
             if 'question_set_id' not in exam_cols:
-                db.engine.execute('ALTER TABLE exam ADD COLUMN question_set_id INTEGER')
+                _exec_ddl('ALTER TABLE exam ADD COLUMN question_set_id INTEGER')
         except Exception as schema_err:
             app.logger.warning(f'Could not verify/add exam columns: {schema_err}')
             # Continue anyway - maybe columns already exist
@@ -5647,7 +5647,7 @@ def add_exam():
         except Exception as e:
             # If the DB schema is missing the question_set_id column, ensure schema then retry
             try:
-                db.engine.execute('ALTER TABLE question ADD COLUMN question_set_id INTEGER')
+                _exec_ddl('ALTER TABLE question ADD COLUMN question_set_id INTEGER')
             except Exception:
                 try:
                     db.session.rollback()
@@ -5719,11 +5719,11 @@ def add_exam():
             if 'school_id' in error_msg or 'school_code' in error_msg or 'is_active' in error_msg or 'question_set_id' in error_msg:
                 try:
                     app.logger.warning(f"Detected missing columns, attempting auto-fix: {str(e)[:100]}")
-                    # Try to add all potentially missing columns
-                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS school_id INTEGER')
-                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS school_code VARCHAR(50)')
-                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true')
-                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS question_set_id INTEGER')
+                    # Try to add all potentially missing columns using _exec_ddl
+                    _exec_ddl('ALTER TABLE exam ADD COLUMN IF NOT EXISTS school_id INTEGER')
+                    _exec_ddl('ALTER TABLE exam ADD COLUMN IF NOT EXISTS school_code VARCHAR(50)')
+                    _exec_ddl('ALTER TABLE exam ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true')
+                    _exec_ddl('ALTER TABLE exam ADD COLUMN IF NOT EXISTS question_set_id INTEGER')
                     
                     # Retry the insert
                     db.session.add(exam)
