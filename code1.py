@@ -1610,30 +1610,30 @@ def admin_dashboard():
     try:
         exam_ids = [e.id for e in exams]
         if exam_ids:
-            # Get all ExamSessions for exams in this school
-            sessions = ExamSession.query.filter(ExamSession.exam_id.in_(exam_ids)).order_by(ExamSession.created_at.desc()).limit(30).all()
+            # Order by end_time if available, otherwise fallback to start_time
+            sessions = ExamSession.query.filter(ExamSession.exam_id.in_(exam_ids)).order_by(
+                func.coalesce(ExamSession.end_time, ExamSession.start_time).desc()
+            ).limit(30).all()
             for sess in sessions:
-                student = None
-                if sess:
-                    student = User.query.get(sess.student_id)
-                exam = Exam.query.get(sess.exam_id) if sess else None
-                
-                rec_class = (getattr(student, 'student_class', None) if student else None)
+                student = sess.student if sess else None
+                exam = sess.exam if sess else None
+                rec_class = getattr(student, 'student_class', None) if student else None
                 # apply class filter if requested
                 if selected_class and selected_class.strip() and rec_class != selected_class:
                     continue
-                
+
+                uploaded_at = sess.end_time or sess.start_time
                 recordings.append({
                     'id': sess.id,
                     'filename': f"Exam Session {sess.id}",
                     'filename_basename': f"{exam.title if exam else 'Unknown'} - Session {sess.id}",
-                    'uploaded_at': sess.created_at,
+                    'uploaded_at': uploaded_at,
                     'student_username': getattr(student, 'username', None) if student else None,
                     'student_full_name': getattr(student, 'full_name', None) if student else None,
                     'student_class': rec_class,
                     'exam_id': sess.exam_id if sess else None,
                     'status': getattr(sess, 'status', 'pending'),
-                    'marks_obtained': getattr(sess, 'marks_obtained', None)
+                    'marks_obtained': getattr(sess, 'score', None)
                 })
     except Exception as e:
         app.logger.error(f'Error loading exam sessions: {e}')
