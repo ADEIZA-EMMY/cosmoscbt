@@ -2212,14 +2212,17 @@ def exams_for_school(school_id):
     the creator's user.school_id; we include both cases so existing
     data continues to work until a backfill is run.
     
-    If school_id is None (student not assigned to a school), return public exams only (school_id IS NULL).
+    Treats NULL is_active as True (for exams created before is_active column was added).
+    If school_id is None (student not assigned to a school), returns all active exams.
     """
     try:
-        # If student has no school assignment, show only public exams (school_id IS NULL)
+        # Build is_active condition that treats NULL as True (for legacy exams)
+        # is_active IS NULL OR is_active = True means exam is active
+        is_active_cond = or_(Exam.is_active.is_(None), Exam.is_active == True)
+        
+        # If student has no school assignment, show all active exams (not just public ones)
         if not school_id:
-            return Exam.query.filter(
-                and_(Exam.is_active == True, Exam.school_id.is_(None))
-            ).order_by(Exam.created_at.desc()).all()
+            return Exam.query.filter(is_active_cond).order_by(Exam.created_at.desc()).all()
         
         # Attempt to include exams explicitly tied to the school (school_id or school_code)
         # and fall back to exams created by users in that school for legacy rows.
@@ -2238,9 +2241,9 @@ def exams_for_school(school_id):
         # Also include public exams (school_id IS NULL) for this school's students
         school_conds.append(Exam.school_id.is_(None))
 
-        # Filter: is_active AND (matches one of the school conditions)
+        # Filter: is_active (or NULL) AND (matches one of the school conditions)
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
-            and_(Exam.is_active == True, or_(*school_conds))
+            and_(is_active_cond, or_(*school_conds))
         ).order_by(Exam.created_at.desc()).all()
     except Exception as e:
         try:
@@ -6047,7 +6050,11 @@ def student_dashboard():
         except Exception:
             allowed = ''
 
+        # If allowed_classes is specified, student must be in that list
         if allowed:
+            # If student has no class set, they can't access class-restricted exams
+            if not student_class:
+                return False
             allowed_list = [c.strip().lower() for c in allowed.split(',') if c.strip()]
             return student_class.strip().lower() in allowed_list
 
@@ -6063,10 +6070,14 @@ def student_dashboard():
             except Exception:
                 subj_class = ''
 
+        # If subject_class is specified, student must match or have their class set
         if subj_class:
+            # If student has no class, grant access (they might not be in any class yet)
+            if not student_class:
+                return True
             return student_class.strip().lower() == subj_class.strip().lower()
 
-        # If no restrictions, exam is available to all
+        # If no restrictions at all, exam is available to all
         return True
 
     exams = [e for e in exams if exam_visible_to_student(e)]
