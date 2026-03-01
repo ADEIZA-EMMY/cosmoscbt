@@ -5885,24 +5885,25 @@ def admin_results():
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
     
-    # Scope results to the effective school for non-superadmins
     try:
-        if session.get('is_superadmin'):
-            exam_sessions = ExamSession.query.filter_by(status='completed').order_by(ExamSession.created_at.desc()).all()
-        else:
+        # Fetch all completed exam sessions - simple, direct approach
+        exam_sessions = ExamSession.query.filter_by(status='completed').order_by(ExamSession.created_at.desc()).all()
+        
+        # If non-superadmin, filter by school after fetching
+        if not session.get('is_superadmin'):
             cur_sid = _get_effective_school_id()
-            # CRITICAL FIX: Join exam to verify it belongs to this school
-            exam_sessions = ExamSession.query.join(
-                User, ExamSession.student_id == User.id
-            ).join(
-                Exam, ExamSession.exam_id == Exam.id
-            ).filter(
-                ExamSession.status=='completed',
-                User.school_id==cur_sid
-            ).order_by(ExamSession.created_at.desc()).all()
+            filtered_sessions = []
+            for s in exam_sessions:
+                try:
+                    if s.student and s.student.school_id == cur_sid:
+                        filtered_sessions.append(s)
+                except Exception:
+                    pass
+            exam_sessions = filtered_sessions
     except Exception as e:
         app.logger.error(f'Error fetching exam sessions: {e}')
-        exam_sessions = ExamSession.query.filter_by(status='completed').order_by(ExamSession.created_at.desc()).all()
+        exam_sessions = []
+    
     subjects = subjects_for_current_user()
 
     # Pre-fetch answers per session so admin UI can show theory responses for manual marking
