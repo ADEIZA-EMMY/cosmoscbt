@@ -5619,6 +5619,25 @@ def add_exam():
         except Exception:
             qset_id_int = None
 
+        # CRITICAL: Ensure exam table has all required columns before proceeding
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            exam_cols = [c['name'] for c in inspector.get_columns('exam')]
+            
+            # Add missing columns explicitly
+            if 'school_id' not in exam_cols:
+                db.engine.execute('ALTER TABLE exam ADD COLUMN school_id INTEGER')
+            if 'school_code' not in exam_cols:
+                db.engine.execute('ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)')
+            if 'is_active' not in exam_cols:
+                db.engine.execute('ALTER TABLE exam ADD COLUMN is_active BOOLEAN DEFAULT true')
+            if 'question_set_id' not in exam_cols:
+                db.engine.execute('ALTER TABLE exam ADD COLUMN question_set_id INTEGER')
+        except Exception as schema_err:
+            app.logger.warning(f'Could not verify/add exam columns: {schema_err}')
+            # Continue anyway - maybe columns already exist
+
         try:
             if qset_id_int:
                 questions = Question.query.filter_by(question_set_id=qset_id_int).all()
@@ -5690,15 +5709,36 @@ def add_exam():
             db.session.commit()
             app.logger.info(f"Exam '{title}' created successfully with id={exam.id}")
         except Exception as e:
+            error_msg = str(e).lower()
             try:
                 db.session.rollback()
             except Exception:
                 pass
-            # If it's a column error, suggest migration
-            if 'school_id' in str(e) or 'school_code' in str(e):
-                flash('Database schema needs update. Please contact admin to run migration.', 'warning')
-                app.logger.error(f"Exam creation failed due to missing columns: {str(e)[:100]}")
-                return redirect(url_for('add_exam'))
+            
+            # If it's a column error, try to add the column and retry
+            if 'school_id' in error_msg or 'school_code' in error_msg or 'is_active' in error_msg or 'question_set_id' in error_msg:
+                try:
+                    app.logger.warning(f"Detected missing columns, attempting auto-fix: {str(e)[:100]}")
+                    # Try to add all potentially missing columns
+                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS school_id INTEGER')
+                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS school_code VARCHAR(50)')
+                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true')
+                    db.engine.execute('ALTER TABLE exam ADD COLUMN IF NOT EXISTS question_set_id INTEGER')
+                    
+                    # Retry the insert
+                    db.session.add(exam)
+                    db.session.commit()
+                    app.logger.info(f"Exam '{title}' created successfully after schema fix with id={exam.id}")
+                    flash('Exam created successfully (schema was updated)', 'success')
+                    return redirect(url_for('admin_exams'))
+                except Exception as retry_err:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+                    app.logger.error(f"Exam creation failed even after schema fix: {str(retry_err)[:100]}")
+                    flash(f'Database error: {str(retry_err)[:80]}. Contact administrator for support.', 'danger')
+                    return redirect(url_for('add_exam'))
             else:
                 flash(f'Error creating exam: {str(e)[:100]}', 'danger')
                 app.logger.error(f"Error creating exam: {str(e)}")
