@@ -2192,10 +2192,16 @@ def exams_for_school(school_id):
     Newer records have `Exam.school_id` set. Legacy rows may rely on
     the creator's user.school_id; we include both cases so existing
     data continues to work until a backfill is run.
+    
+    If school_id is None (student not assigned to a school), return public exams only (school_id IS NULL).
     """
     try:
+        # If student has no school assignment, show only public exams (school_id IS NULL)
         if not school_id:
-            return []
+            return Exam.query.filter(
+                and_(Exam.is_active == True, Exam.school_id.is_(None))
+            ).order_by(Exam.created_at.desc()).all()
+        
         # Attempt to include exams explicitly tied to the school (school_id or school_code)
         # and fall back to exams created by users in that school for legacy rows.
         try:
@@ -2210,6 +2216,8 @@ def exams_for_school(school_id):
             school_conds.append(Exam.school_code == school_code)
         # legacy rows where exam.school_id is NULL but creator.user.school_id matches
         school_conds.append(and_(Exam.school_id.is_(None), User.school_id == school_id))
+        # Also include public exams (school_id IS NULL) for this school's students
+        school_conds.append(Exam.school_id.is_(None))
 
         # Filter: is_active AND (matches one of the school conditions)
         return Exam.query.outerjoin(User, Exam.created_by == User.id).filter(
@@ -5644,6 +5652,7 @@ def add_exam():
             subject_class=subject_class,
             allowed_classes=allowed_classes,
             allow_quick_start=True,
+            is_active=True,
             code=generate_unique_exam_code(),
             total_marks=total_marks,
             created_by=session['user_id']
