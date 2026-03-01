@@ -277,6 +277,8 @@ class Subject(db.Model):
     subject_class = db.Column(db.String(50), nullable=True)
     description = db.Column(db.Text)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    # CRITICAL FIX: school_id allows global subjects (NULL) or school-specific subjects
+    school_id = db.Column(db.Integer, db.ForeignKey('school.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class School(db.Model):
@@ -1603,46 +1605,38 @@ def admin_dashboard():
         school_obj = None
 
     schools = get_schools_safe()
-    # Also include recent recordings for exams belonging to this admin's school
+    # CRITICAL FIX: Include recent exam sessions (not just recordings) for this admin's school
     recordings = []
     try:
         exam_ids = [e.id for e in exams]
         if exam_ids:
-            sessions = ExamSession.query.filter(ExamSession.exam_id.in_(exam_ids)).all()
-            sids = [s.id for s in sessions]
-            if sids:
-                raw_recs = Recording.query.filter(Recording.exam_session_id.in_(sids)).order_by(Recording.uploaded_at.desc()).limit(20).all()
-                for rec in raw_recs:
-                    sess = ExamSession.query.get(rec.exam_session_id) if rec.exam_session_id else None
-                    student = None
-                    if sess:
-                        student = User.query.get(sess.student_id)
-                    
-                    # FILTER: Only show recordings from students in the same school
-                    if student and admin_school_id:
-                        try:
-                            if not student.school_id or int(student.school_id) != int(admin_school_id):
-                                continue
-                        except Exception:
-                            pass
-                    
-                    import ntpath
-                    basename = ntpath.basename(rec.filename or '')
-                    # apply class filter if requested
-                    rec_class = (getattr(student, 'student_class', None) if student else None) or getattr(rec, 'student_class', None)
-                    if selected_class and selected_class.strip() and rec_class != selected_class:
-                        continue
-                    recordings.append({
-                        'id': rec.id,
-                        'filename': rec.filename,
-                        'filename_basename': basename,
-                        'uploaded_at': rec.uploaded_at,
-                        'student_username': getattr(student, 'username', None) if student else None,
-                        'student_full_name': getattr(student, 'full_name', None) if student else None,
-                        'student_class': rec_class,
-                        'exam_id': sess.exam_id if sess else None
-                    })
-    except Exception:
+            # Get all ExamSessions for exams in this school
+            sessions = ExamSession.query.filter(ExamSession.exam_id.in_(exam_ids)).order_by(ExamSession.created_at.desc()).limit(30).all()
+            for sess in sessions:
+                student = None
+                if sess:
+                    student = User.query.get(sess.student_id)
+                exam = Exam.query.get(sess.exam_id) if sess else None
+                
+                rec_class = (getattr(student, 'student_class', None) if student else None)
+                # apply class filter if requested
+                if selected_class and selected_class.strip() and rec_class != selected_class:
+                    continue
+                
+                recordings.append({
+                    'id': sess.id,
+                    'filename': f"Exam Session {sess.id}",
+                    'filename_basename': f"{exam.title if exam else 'Unknown'} - Session {sess.id}",
+                    'uploaded_at': sess.created_at,
+                    'student_username': getattr(student, 'username', None) if student else None,
+                    'student_full_name': getattr(student, 'full_name', None) if student else None,
+                    'student_class': rec_class,
+                    'exam_id': sess.exam_id if sess else None,
+                    'status': getattr(sess, 'status', 'pending'),
+                    'marks_obtained': getattr(sess, 'marks_obtained', None)
+                })
+    except Exception as e:
+        app.logger.error(f'Error loading exam sessions: {e}')
         recordings = []
 
     return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, classes=classes, selected_class=selected_class)
@@ -1816,29 +1810,29 @@ def _get_effective_school_id():
 
 
 def subjects_for_current_user():
-    """Return subjects visible to the current user (scoped to school for admins)."""
+    """Return subjects visible to current admin.
+    
+    CRITICAL FIX: Global subjects (school_id IS NULL) are now visible to ALL admins
+    - Superadmin sees all subjects
+    - Regular admin sees: own subjects + global subjects (school_id IS NULL) + same school subjects
+    """
+    user_id = session.get('user_id')
     try:
         if session.get('is_superadmin'):
+            # superadmin sees all subjects
             return Subject.query.order_by(Subject.name).all()
-        school_id = _get_effective_school_id()
-        if not school_id:
-            return []
-        # Strategy 1: Return subjects created by users in this school
-        subjects_by_creator = Subject.query.join(User, Subject.created_by == User.id)\
-            .filter(User.school_id == school_id)\
-            .order_by(Subject.name).all()
-        # Strategy 2: Return subjects with school_id set to this school
-        subjects_by_school = Subject.query.filter(Subject.school_id == school_id)\
-            .order_by(Subject.name).all() if not subjects_by_creator else []
-        # Combine and deduplicate
-        all_subjects = list({s.id: s for s in subjects_by_creator + subjects_by_school}.values())
-        return sorted(all_subjects, key=lambda s: s.name)
-    except Exception:
-        # Last fallback: return all subjects (for superadmin or if query fails)
-        try:
-            return Subject.query.order_by(Subject.name).all()
-        except Exception:
-            return []
+        else:
+            # regular admin sees: own subjects + global subjects (school_id IS NULL) + their school's subjects
+            admin_school_id = _get_effective_school_id()
+            
+            conditions = [Subject.created_by == user_id, Subject.school_id.is_(None)]
+            if admin_school_id:
+                conditions.append(Subject.school_id == admin_school_id)
+            
+            return Subject.query.filter(or_(*conditions)).order_by(Subject.name).all()
+    except Exception as e:
+        app.logger.error(f'Error in subjects_for_current_user: {e}')
+        return []
 
 
 def exams_for_current_user():
@@ -2391,15 +2385,39 @@ def add_subject():
     if request.method == 'POST':
         name = request.form['name']
         description = request.form['description']
+        # CRITICAL FIX: Subjects are now visible globally - set school_id to None for global visibility
+        # Admin can leave school_id empty to make subject available to all schools
+        school_id = request.form.get('school_id')
+        try:
+            school_id = int(school_id) if school_id else None
+        except Exception:
+            school_id = None
         
-        subject = Subject(name=name, description=description, created_by=session['user_id'])
+        # If not superadmin, use their school as default (but can still be None for global)
+        if not session.get('is_superadmin') and not school_id:
+            try:
+                admin_user = User.query.get(session['user_id'])
+                # Leave as None to make available globally unless explicitly scoped
+                school_id = None
+            except Exception:
+                school_id = None
+        
+        subject = Subject(name=name, description=description, created_by=session['user_id'], school_id=school_id)
         db.session.add(subject)
         db.session.commit()
         
         flash('Subject added successfully', 'success')
         return redirect(url_for('admin_subjects'))
     
-    return render_template('admin/add_subject.html')
+    # Get schools for superadmin to optionally scope subject
+    schools = []
+    try:
+        if session.get('is_superadmin'):
+            schools = School.query.order_by(School.name).all()
+    except Exception:
+        schools = []
+    
+    return render_template('admin/add_subject.html', schools=schools)
 
 
 @app.route('/admin/subjects/delete_selected', methods=['POST'])
@@ -3159,14 +3177,15 @@ def admin_edit_student(user_id):
                 user.school_id = int(sid) if sid else None
             except Exception:
                 pass
-        # update basic fields
-        user.full_name = full_name
-        user.student_class = student_class
+        # update basic fields - CRITICAL FIX: Now properly updating student profile
+        user.full_name = full_name if full_name else user.full_name
+        user.student_class = student_class if student_class else user.student_class
         if gender:
             user.gender = gender
 
         # handle passport upload (file or camera data URI)
         passport_saved = False
+        # CRITICAL FIX: Admin can now edit student profile picture
         if 'passport' in request.files:
             pf = request.files['passport']
             if pf and pf.filename:
@@ -3174,33 +3193,42 @@ def admin_edit_student(user_id):
                     pfn = secure_filename(pf.filename)
                     dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
                     os.makedirs(dest, exist_ok=True)
-                    ppath = os.path.join(dest, pfn)
+                    # Use timestamp to ensure unique filename
+                    ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+                    pfn_unique = f"passport_{user.id}_{ts}_{pfn}"
+                    ppath = os.path.join(dest, pfn_unique)
                     pf.save(ppath)
                     user.passport_filename = os.path.relpath(ppath, app.config['UPLOAD_FOLDER']).replace('\\', '/')
                     passport_saved = True
+                    flash('Profile picture updated successfully', 'success')
                 except Exception as e:
-                    flash('Failed to save passport: ' + str(e), 'warning')
+                    app.logger.error(f'Failed to save passport: {e}')
+                    flash('Failed to save profile picture: ' + str(e)[:100], 'warning')
         if not passport_saved and request.form.get('passport_data'):
             try:
                 data_uri = request.form.get('passport_data')
-                header, encoded = data_uri.split(',', 1)
-                import base64
-                data = base64.b64decode(encoded)
-                ts = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-                pfn = f"student_{user.id if user.id else 'new'}_{ts}.jpg"
-                dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
-                os.makedirs(dest, exist_ok=True)
-                ppath = os.path.join(dest, pfn)
-                # process and save bytes (validate/resize)
-                try:
-                    rel = _process_and_save_image_bytes(data, f"student_{user.id if user.id else 'new'}_{ts}")
-                    user.passport_filename = rel
-                except Exception:
-                    with open(ppath, 'wb') as fh:
-                        fh.write(data)
-                    user.passport_filename = os.path.relpath(ppath, app.config['UPLOAD_FOLDER']).replace('\\', '/')
+                if data_uri and ',' in data_uri:
+                    header, encoded = data_uri.split(',', 1)
+                    import base64
+                    data = base64.b64decode(encoded)
+                    ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+                    pfn = f"student_{user.id if user.id else 'new'}_{ts}.jpg"
+                    dest = os.path.join(app.config['UPLOAD_FOLDER'], 'passports')
+                    os.makedirs(dest, exist_ok=True)
+                    ppath = os.path.join(dest, pfn)
+                    # process and save bytes (validate/resize)
+                    try:
+                        rel = _process_and_save_image_bytes(data, f"student_{user.id if user.id else 'new'}_{ts}")
+                        user.passport_filename = rel
+                        passport_saved = True
+                    except Exception:
+                        with open(ppath, 'wb') as fh:
+                            fh.write(data)
+                        user.passport_filename = os.path.relpath(ppath, app.config['UPLOAD_FOLDER']).replace('\\', '/')
+                        passport_saved = True
             except Exception as e:
-                flash('Failed to save passport: ' + str(e), 'warning')
+                app.logger.error(f'Failed to process camera data: {e}')
+                flash('Failed to save profile picture from camera: ' + str(e)[:100], 'warning')
 
         try:
             db.session.commit()
@@ -5846,13 +5874,21 @@ def admin_results():
     # Scope results to the effective school for non-superadmins
     try:
         if session.get('is_superadmin'):
-            exam_sessions = ExamSession.query.filter_by(status='completed').all()
+            exam_sessions = ExamSession.query.filter_by(status='completed').order_by(ExamSession.created_at.desc()).all()
         else:
             cur_sid = _get_effective_school_id()
-            # join with student to filter by student.school_id
-            exam_sessions = ExamSession.query.join(User, ExamSession.student_id == User.id).filter(ExamSession.status=='completed', User.school_id==cur_sid).all()
-    except Exception:
-        exam_sessions = ExamSession.query.filter_by(status='completed').all()
+            # CRITICAL FIX: Join exam to verify it belongs to this school
+            exam_sessions = ExamSession.query.join(
+                User, ExamSession.student_id == User.id
+            ).join(
+                Exam, ExamSession.exam_id == Exam.id
+            ).filter(
+                ExamSession.status=='completed',
+                User.school_id==cur_sid
+            ).order_by(ExamSession.created_at.desc()).all()
+    except Exception as e:
+        app.logger.error(f'Error fetching exam sessions: {e}')
+        exam_sessions = ExamSession.query.filter_by(status='completed').order_by(ExamSession.created_at.desc()).all()
     subjects = subjects_for_current_user()
 
     # Pre-fetch answers per session so admin UI can show theory responses for manual marking
@@ -6104,13 +6140,8 @@ def student_dashboard():
     passport_url = None
     try:
         if student and getattr(student, 'passport_filename', None):
-            pf = str(getattr(student, 'passport_filename', '')).strip()
-            if pf and pf.lower() not in ['none', '']:
-                # Extract just the filename, handling both full paths and relative paths
-                if '/' in pf:
-                    pf = pf.split('/')[-1]
-                if pf:
-                    passport_url = url_for('serve_passport', filename=pf)
+            pf = os.path.basename(student.passport_filename)
+            passport_url = url_for('serve_passport', filename=pf)
     except Exception:
         passport_url = None
 
@@ -6470,6 +6501,55 @@ def take_exam(exam_id):
             return redirect(url_for('login'))
 
         exam = Exam.query.get_or_404(exam_id)
+        
+        # CRITICAL FIX: Verify student has access to exam based on class and school
+        student = User.query.get(session['user_id'])
+        
+        # Check school access
+        try:
+            my_school = int(student.school_id) if student and student.school_id else None
+        except Exception:
+            my_school = None
+        
+        if not my_school:
+            # Student has no school - can only access public exams (school_id IS NULL)
+            if exam.school_id is not None:
+                flash('You do not have access to this exam', 'danger')
+                return redirect(url_for('student_dashboard'))
+        else:
+            # Student has school - check if exam is for them
+            if exam.school_id and int(exam.school_id) != int(my_school):
+                flash('This exam is not available for your school', 'danger')
+                return redirect(url_for('student_dashboard'))
+        
+        # Check class access
+        try:
+            student_class = (student.student_class or '').strip() if student else ''
+        except Exception:
+            student_class = ''
+        
+        # Check allowed_classes
+        try:
+            allowed = (exam.allowed_classes or '').strip()
+        except Exception:
+            allowed = ''
+        
+        if allowed:
+            allowed_list = [c.strip().lower() for c in allowed.split(',') if c.strip()]
+            if not student_class or student_class.strip().lower() not in allowed_list:
+                flash('You are not in an allowed class for this exam', 'danger')
+                return redirect(url_for('student_dashboard'))
+        
+        # Check subject_class if allowed_classes not set
+        try:
+            subj_class = (exam.subject_class or '').strip()
+        except Exception:
+            subj_class = ''
+        
+        if not allowed and subj_class:
+            if student_class and student_class.strip().lower() != subj_class.strip().lower():
+                flash('You are not in the correct class for this exam', 'danger')
+                return redirect(url_for('student_dashboard'))
 
         # check for existing completed/submitted session
         completed_session = ExamSession.query.filter(
