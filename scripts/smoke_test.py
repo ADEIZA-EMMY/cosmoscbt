@@ -1,7 +1,7 @@
 import requests
 import uuid
 
-base = 'https://cosmoscbtapp-2183135b8b6b.herokuapp.com'
+base = 'https://cosmoscbtapp.herokuapp.com'
 register_url = f'{base}/register'
 login_url = f'{base}/login'
 dash_url = f'{base}/student/dashboard'

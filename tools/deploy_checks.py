@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 
-BASE = 'https://cosmoscbtapp-ed1785342c7c.herokuapp.com'
+BASE = 'https://cosmoscbtapp.herokuapp.com'
 s = requests.Session()
 
 def check(path):
