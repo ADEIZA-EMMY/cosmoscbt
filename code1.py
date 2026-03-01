@@ -96,14 +96,45 @@ with app.app_context():
     try:
         db.create_all()
         print('Created database tables via db.create_all()')
-        # Now run init_db to add missing columns and migrations
+        
+        # Add missing columns directly (avoid nested app contexts)
         try:
-            init_db()
-            print('Ran init_db() migrations successfully')
+            from sqlalchemy import inspect
+            
+            # Check and add exam table columns
+            if 'exam' in inspect(db.engine).get_table_names():
+                ecols = [c['name'] for c in inspect(db.engine).get_columns('exam')]
+                
+                # Add school_id if missing
+                if 'school_id' not in ecols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN school_id INTEGER")
+                        print('Added school_id to exam table')
+                    except Exception as e:
+                        print(f'Failed to add school_id: {e}')
+                
+                # Add school_code if missing
+                if 'school_code' not in ecols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)")
+                        print('Added school_code to exam table')
+                    except Exception as e:
+                        print(f'Failed to add school_code: {e}')
+                
+                # Add is_active if missing
+                if 'is_active' not in ecols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN is_active BOOLEAN DEFAULT true")
+                        print('Added is_active to exam table')
+                    except Exception as e:
+                        print(f'Failed to add is_active: {e}')
+            
+            print('Database migrations completed successfully')
         except Exception as e:
-            print('init_db() migrations encountered issues:', e)
+            print(f'Error running migrations: {e}')
+            
     except Exception as e:
-        print('Failed to create tables:', e)
+        print('Failed to create tables or run migrations:', e)
 
 # Ensure DB tables exist when the web process first receives a request.
 # This runs inside the web dyno so created tables are visible to that process.
