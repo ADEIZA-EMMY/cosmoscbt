@@ -1617,6 +1617,15 @@ def admin_dashboard():
                     student = None
                     if sess:
                         student = User.query.get(sess.student_id)
+                    
+                    # FILTER: Only show recordings from students in the same school
+                    if student and admin_school_id:
+                        try:
+                            if not student.school_id or int(student.school_id) != int(admin_school_id):
+                                continue
+                        except Exception:
+                            pass
+                    
                     import ntpath
                     basename = ntpath.basename(rec.filename or '')
                     # apply class filter if requested
@@ -1814,10 +1823,18 @@ def subjects_for_current_user():
         school_id = _get_effective_school_id()
         if not school_id:
             return []
-        # Return subjects created by any admin/user in the same school
-        return Subject.query.join(User, Subject.created_by == User.id).filter(User.school_id == school_id).order_by(Subject.name).all()
+        # Strategy 1: Return subjects created by users in this school
+        subjects_by_creator = Subject.query.join(User, Subject.created_by == User.id)\
+            .filter(User.school_id == school_id)\
+            .order_by(Subject.name).all()
+        # Strategy 2: Return subjects with school_id set to this school
+        subjects_by_school = Subject.query.filter(Subject.school_id == school_id)\
+            .order_by(Subject.name).all() if not subjects_by_creator else []
+        # Combine and deduplicate
+        all_subjects = list({s.id: s for s in subjects_by_creator + subjects_by_school}.values())
+        return sorted(all_subjects, key=lambda s: s.name)
     except Exception:
-        # Fallback: if join fails, return all subjects (or empty list)
+        # Last fallback: return all subjects (for superadmin or if query fails)
         try:
             return Subject.query.order_by(Subject.name).all()
         except Exception:
@@ -6087,8 +6104,13 @@ def student_dashboard():
     passport_url = None
     try:
         if student and getattr(student, 'passport_filename', None):
-            pf = os.path.basename(student.passport_filename)
-            passport_url = url_for('serve_passport', filename=pf)
+            pf = str(getattr(student, 'passport_filename', '')).strip()
+            if pf and pf.lower() not in ['none', '']:
+                # Extract just the filename, handling both full paths and relative paths
+                if '/' in pf:
+                    pf = pf.split('/')[-1]
+                if pf:
+                    passport_url = url_for('serve_passport', filename=pf)
     except Exception:
         passport_url = None
 

@@ -65,9 +65,13 @@
           <button type="button" id="close_camera" class="btn btn-secondary btn-sm">Close</button>
         </div>
       </div>
-      {% if student.passport_filename %}
+      {% if student.passport_filename and student.passport_filename|string != 'None' %}
         <div class="mt-2">
-          <img id="existing_passport" src="{{ url_for('serve_passport', filename=student.passport_filename.split('/')[-1]) }}" alt="Passport" style="width:96px;height:96px;object-fit:cover;border:1px solid #ddd;" />
+          {% set pf = student.passport_filename|string %}
+          {% if '/' in pf %}
+            {% set pf = pf.split('/')|last %}
+          {% endif %}
+          <img id="existing_passport" src="{{ url_for('serve_passport', filename=pf) }}" alt="Passport" style="width:96px;height:96px;object-fit:cover;border:1px solid #ddd;" />
         </div>
       {% endif %}
     </div>
