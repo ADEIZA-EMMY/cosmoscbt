@@ -42,98 +42,11 @@
                             </td>
                             <td>{{ session.uploaded_at.strftime('%Y-%m-%d %H:%M') if session.uploaded_at else 'N/A' }}</td>
                         <td>
-                            <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#resultModal{{ session.id }}">
+                            <a class="btn btn-sm btn-info" href="{{ url_for('admin_view_result', session_id=session.id) }}">
                                 <i class="fas fa-chart-bar"></i> Details
-                            </button>
+                            </a>
                         </td>
                     </tr>
-
-                    <!-- Result Modal -->
-                    <div class="modal fade" id="resultModal{{ session.id }}" tabindex="-1">
-                        <div class="modal-dialog modal-lg">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Exam Result Details</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <strong>Student:</strong> {{ session.student_full_name }}
-                                        </div>
-                                        <div class="col-md-6">
-                                            <strong>Username:</strong> {{ session.student_username }}
-                                        </div>
-                                    </div>
-                                    <div class="row mt-2">
-                                        <div class="col-md-6">
-                                            <strong>Exam:</strong> {{ session.exam.title }}
-                                        </div>
-                                        <div class="col-md-6">
-                                            <strong>Subject:</strong> {{ session.exam.subject.name }}
-                                        </div>
-                                    </div>
-                                    <div class="row mt-2">
-                                        <div class="col-md-6">
-                                            <strong>Score:</strong> {{ session.score }}/{{ session.exam.total_marks }}
-                                        </div>
-                                        <div class="col-md-6">
-                                            <strong>Percentage:</strong> {{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%
-                                        </div>
-                                    </div>
-                                    <div class="row mt-2">
-                                        <div class="col-md-6">
-                                            <strong>Start Time:</strong> {{ session.start_time.strftime('%Y-%m-%d %H:%M') }}
-                                        </div>
-                                        <div class="col-md-6">
-                                            <strong>End Time:</strong> {{ session.end_time.strftime('%Y-%m-%d %H:%M') }}
-                                        </div>
-                                    </div>
-                                    <div class="row mt-2">
-                                        <div class="col-md-6">
-                                            <strong>Duration:</strong> 
-                                            {% if session.end_time %}
-                                                {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} minutes
-                                            {% else %}
-                                                N/A
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                    
-                                    <hr>
-                                    <h6>Answers</h6>
-                                    <div class="mb-2">
-                                        {% set answers = answers_by_session.get(session.id, []) %}
-                                        {% if answers %}
-                                            <div class="list-group">
-                                                {% for a in answers %}
-                                                    <div class="list-group-item">
-                                                        <strong>Q{{ loop.index }}.</strong> {{ a.question.question_text }}
-                                                        <div class="mt-2">
-                                                            {% if a.question.is_theory %}
-                                                                <div class="border p-2 bg-light" style="white-space:pre-wrap;">{{ a.text_response or '(no response)' }}</div>
-                                                            {% else %}
-                                                                <span>Selected: <strong>{{ a.selected_answer or '(none)' }}</strong></span>
-                                                                <span class="ms-3">Correct: <strong>{{ 'Yes' if a.is_correct else 'No' }}</strong></span>
-                                                            {% endif %}
-                                                        </div>
-                                                    </div>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            <p class="text-muted">No answers available for this session.</p>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary">
-                                        <i class="fas fa-download me-2"></i>Download Report
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     {% endfor %}
                 </tbody>
             </table>

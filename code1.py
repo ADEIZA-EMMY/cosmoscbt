@@ -6101,6 +6101,106 @@ def admin_print_theory(session_id):
         # Fallback to HTML rendering
         return render_template('admin/theory_print.html', exam_session=exam_session, student=student, theory_answers=theory_answers)
 
+
+# Admin view for individual exam session results (page)
+@app.route('/admin/result/<int:session_id>')
+def admin_view_result(session_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    exam_session = ExamSession.query.get_or_404(session_id)
+
+    # Restrict to admin's school unless superadmin
+    try:
+        if not session.get('is_superadmin'):
+            admin_school = _get_effective_school_id()
+            student_school = getattr(exam_session.student, 'school_id', None) if exam_session.student else None
+            exam_creator_school = None
+            try:
+                if exam_session.exam and exam_session.exam.created_by:
+                    creator = User.query.get(exam_session.exam.created_by)
+                    exam_creator_school = getattr(creator, 'school_id', None)
+            except Exception:
+                exam_creator_school = None
+            allowed_schools = [x for x in [student_school, exam_creator_school] if x is not None]
+            if admin_school and int(admin_school) not in [int(x) for x in allowed_schools]:
+                flash('Access denied to that exam session', 'danger')
+                return redirect(url_for('admin_dashboard'))
+    except Exception:
+        pass
+
+    # Gather answers and questions
+    answers = Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all()
+    questions = []
+    for answer in answers:
+        question = Question.query.get(answer.question_id)
+        questions.append({
+            'question': question,
+            'selected_answer': answer.selected_answer,
+            'is_correct': answer.is_correct,
+            'text_response': getattr(answer, 'text_response', None)
+        })
+
+    # Compute time used
+    time_used_str = 'N/A'
+    try:
+        if exam_session.start_time:
+            end = exam_session.end_time or datetime.utcnow()
+            delta = end - exam_session.start_time
+            seconds = int(delta.total_seconds())
+            minutes = seconds // 60
+            secs = seconds % 60
+            if minutes > 0:
+                time_used_str = f"{minutes} min {secs} sec"
+            else:
+                time_used_str = f"{secs} sec"
+    except Exception:
+        time_used_str = 'N/A'
+
+    return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str)
+
+
+@app.route('/admin/result/<int:session_id>/pdf')
+def admin_result_pdf(session_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    exam_session = ExamSession.query.get_or_404(session_id)
+    answers = Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all()
+    questions = []
+    for answer in answers:
+        question = Question.query.get(answer.question_id)
+        questions.append({
+            'question': question,
+            'selected_answer': answer.selected_answer,
+            'is_correct': answer.is_correct,
+            'text_response': getattr(answer, 'text_response', None)
+        })
+
+    # Compute time used
+    time_used_str = 'N/A'
+    try:
+        if exam_session.start_time:
+            end = exam_session.end_time or datetime.utcnow()
+            delta = end - exam_session.start_time
+            seconds = int(delta.total_seconds())
+            minutes = seconds // 60
+            secs = seconds % 60
+            if minutes > 0:
+                time_used_str = f"{minutes} min {secs} sec"
+            else:
+                time_used_str = f"{secs} sec"
+    except Exception:
+        time_used_str = 'N/A'
+
+    try:
+        rendered = render_template('student/result_detail.html', exam_session=exam_session, questions=questions, pdf_mode=True, time_used=time_used_str)
+        return rendered
+    except Exception:
+        return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str)
+
 # Student Routes
 @app.route('/student/dashboard')
 def student_dashboard():
