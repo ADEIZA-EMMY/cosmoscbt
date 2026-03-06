@@ -49,6 +49,34 @@
     </div>
 
     <script>
+    // Function to setup checkbox listeners - called after AJAX loads and on page load
+    function setupCheckboxListeners(){
+        const selectAll = document.getElementById('select_all_students');
+        const checkboxes = document.querySelectorAll('.student-checkbox');
+        const bulkBtn = document.getElementById('bulk-delete-btn');
+        const bulkIds = document.getElementById('bulk-user-ids');
+        
+        function updateBulkState(){
+            const checked = Array.from(checkboxes).filter(c=>c.checked);
+            bulkBtn.disabled = checked.length === 0;
+            bulkIds.value = checked.map(c=>c.value).join(',');
+            // Update select-all checkbox state
+            if(selectAll){
+                selectAll.checked = checkboxes.length > 0 && checkboxes.length === checked.length;
+            }
+        }
+        
+        if(selectAll){
+            selectAll.addEventListener('change', ()=>{
+                checkboxes.forEach(c=> c.checked = selectAll.checked);
+                updateBulkState();
+            });
+        }
+        
+        checkboxes.forEach(c=> c.addEventListener('change', updateBulkState));
+        updateBulkState(); // Initialize state
+    }
+    
     // AJAX helper to load students for a given class. Exposed so the
     // select's onchange can trigger it directly (fixes cases where the
     // Show button may be blocked in the UI).
@@ -69,7 +97,7 @@
                 // show a clear message in the table when empty
                 const tbody = document.querySelector('table tbody');
                 if(tbody){
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-muted">No students found for this class.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-muted">No students found for this class.</td></tr>';
                 }
             }
             list.forEach(s=>{
@@ -83,16 +111,15 @@
                     <td>${s.gender || '—'}</td>
                     <td>${s.temp_password || '—'}</td>
                     <td>${s.created_at ? s.created_at.split('T')[0] : ''}</td>
-                                        <td>
-                                            <a class="btn btn-sm btn-secondary" href="/admin/student/${s.id}/edit">Edit</a>
-                                            <form method="post" action="/admin/student/${s.id}/delete" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');"><button type="submit" class="btn btn-sm btn-danger">Delete</button></form>
-                                            <form method="post" action="/admin/student/${s.id}/reset_password" style="display:inline; margin-left:6px;" onsubmit="return confirm('Generate and set a new temporary password for this student?');"><button type="submit" class="btn btn-sm btn-warning">Reset Password</button></form>
-                                        </td>`;
+                    <td>
+                        <a class="btn btn-sm btn-secondary" href="/admin/student/${s.id}/edit">Edit</a>
+                        <form method="post" action="/admin/student/${s.id}/delete" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');"><button type="submit" class="btn btn-sm btn-danger">Delete</button></form>
+                        <form method="post" action="/admin/student/${s.id}/reset_password" style="display:inline; margin-left:6px;" onsubmit="return confirm('Generate and set a new temporary password for this student?');"><button type="submit" class="btn btn-sm btn-warning">Reset Password</button></form>
+                    </td>`;
                 tbody.appendChild(tr);
             });
-            // reattach checkboxes handlers
-            const checkboxes = document.querySelectorAll('.student-checkbox');
-            checkboxes.forEach(c=> c.addEventListener('change', ()=>{/*noop - bulk handled elsewhere*/}));
+            // Re-setup checkbox listeners after loading new students
+            setupCheckboxListeners();
         }catch(err){
             console.error('Error loading students', err);
             alert('Failed to load students');
@@ -125,8 +152,6 @@
             if(importCsvClass) importCsvClass.value = v || '';
             if(importXlsxClass) importXlsxClass.value = v || '';
         }
-        if(sel){ sel.addEventListener('change', updateClassParam); updateClassParam(); }
-    })();
     </script>
 
     <div id="no-class-alert" class="alert alert-info" {% if selected_class %}style="display:none;"{% endif %}>Please select a class to view students.</div>
@@ -158,6 +183,7 @@
                     <td>{{ student.username }}</td>
                     <td>{{ student.full_name or '' }}</td>
                     <td>{{ student.student_class or '—' }}</td>
+                    <td>{{ student.gender or '—' }}</td>
                     <td>{{ student.temp_password or '—' }}</td>
                     <td>{{ student.created_at.strftime('%Y-%m-%d') }}</td>
                     <td>
@@ -183,22 +209,11 @@
     </form>
 
     <script>
-        const selectAll = document.getElementById('select_all_students');
-        const checkboxes = document.querySelectorAll('.student-checkbox');
-        const bulkBtn = document.getElementById('bulk-delete-btn');
-        const bulkIds = document.getElementById('bulk-user-ids');
-        function updateBulkState(){
-            const checked = Array.from(checkboxes).filter(c=>c.checked);
-            bulkBtn.disabled = checked.length === 0;
-            bulkIds.value = checked.map(c=>c.value).join(',');
-        }
-        if(selectAll){
-            selectAll.addEventListener('change', ()=>{
-                checkboxes.forEach(c=> c.checked = selectAll.checked);
-                updateBulkState();
-            });
-        }
-        checkboxes.forEach(c=> c.addEventListener('change', updateBulkState));
+        // Initialize checkbox listeners on page load
+        document.addEventListener('DOMContentLoaded', ()=>{
+            setupCheckboxListeners();
+        });
+        
         // Quick client-side filtering
         (function(){
             const search = document.getElementById('student-search');
