@@ -193,6 +193,12 @@
                                             <option value="{{ c }}" {% if selected_class and selected_class==c %}selected{% endif %}>{{ c }}</option>
                                         {% endfor %}
                                     </select>
+                                    <select name="selected_subject" class="form-select form-select-sm">
+                                        <option value="">All subjects</option>
+                                        {% for s in subjects %}
+                                            <option value="{{ s.name }}" {% if selected_subject and selected_subject==s.name %}selected{% endif %}>{{ s.name }}</option>
+                                        {% endfor %}
+                                    </select>
                                     <button class="btn btn-sm btn-outline-primary" type="submit">Filter</button>
                                 </form>
                                 <form method="post" action="{{ url_for('admin_delete_recordings') }}" id="recordings-delete-form">
@@ -212,7 +218,7 @@
                                         <div>
                                             <input type="checkbox" name="selected_recordings" value="{{ r.id }}" class="me-2 recording-checkbox" />
                                             <strong>{{ r.student_full_name or r.student_username or 'Unknown' }}</strong>
-                                            <div class="text-muted">Class: {{ r.student_class or '—' }} — Exam ID: {{ r.exam_id or 'N/A' }} — Uploaded: {{ r.uploaded_at.strftime('%Y-%m-%d %H:%M') if r.uploaded_at else '' }}</div>
+                                            <div class="text-muted">Class: {{ r.student_class or '—' }} | Subject: {{ r.exam_subject or '—' }} | Exam ID: {{ r.exam_id or 'N/A' }} | Uploaded: {{ r.uploaded_at.strftime('%Y-%m-%d %H:%M') if r.uploaded_at else '' }}</div>
                                         </div>
                                         <div>
                                             <a class="btn btn-sm btn-outline-primary" href="{{ url_for('serve_recording', filename=(r.filename_basename if r.filename_basename is defined else (r.filename.split('/')[-1])) ) }}">View</a>

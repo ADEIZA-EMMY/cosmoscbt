@@ -1258,11 +1258,21 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Helper for rendering login with schools passed
+    def render_login_error(message, category='danger'):
+        schools = []
+        try:
+            schools = School.query.order_by(School.name).all()
+        except Exception:
+            schools = []
+        flash(message, category)
+        return render_template('login.html', schools=schools)
+    
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         # School selection (multi-tenant)
-        school_id = request.form.get('school_id')
+        school_id = request.form.get('school_id', '').strip()
         school_code = request.form.get('school_code')
         
         user = User.query.filter_by(username=username).first()
@@ -1273,48 +1283,44 @@ def login():
                 is_super = bool(user.is_superadmin)
             except Exception:
                 is_super = False
-            if not is_super and school_id:
+            
+            # If user selected a school, validate they belong to it
+            if school_id and not is_super:
                 try:
-                    if str(user.school_id) != str(int(school_id)):
-                        flash('User does not belong to selected school', 'danger')
-                        return render_template('login.html')
-                except Exception:
-                    flash('Invalid school selection', 'danger')
-                    return render_template('login.html')
+                    school_id_int = int(school_id)
+                    user_school_id_int = int(user.school_id) if user.school_id else None
+                    if user_school_id_int and user_school_id_int != school_id_int:
+                        return render_login_error('User does not belong to selected school')
+                except (ValueError, TypeError):
+                    return render_login_error('Invalid school selection')
+            
             # If this is an admin account and it has been restricted by superadmin, deny login
             if user.role == 'admin' and getattr(user, 'is_restricted', False):
-                flash('Your account has been restricted. Contact the super administrator for assistance.', 'restricted')
-                return render_template('login.html')
-            # Check school-level restriction: determine the school to validate
-            try:
-                sel_school_id = None
-                if school_id:
-                    sel_school_id = int(school_id)
-                elif user.school_id:
-                    sel_school_id = int(user.school_id)
-                if sel_school_id:
-                    sch = School.query.get(sel_school_id)
-                    if sch and getattr(sch, 'is_restricted', False) and not is_super:
-                        flash('Selected school access is restricted. Contact superadmin.', 'danger')
-                        return render_template('login.html')
-            except Exception:
-                pass
-            # If a school was selected on the login form, prefer it (for superadmin or matching users)
+                return render_login_error('Your account has been restricted. Contact the super administrator for assistance.', 'restricted')
+            
+            # Determine the final school_id for session
             sel_school_id = None
             try:
-                if school_id:
+                if school_id and is_super:
+                    # Superadmin can pick any school
                     sel_school_id = int(school_id)
-                    # allow superadmin to pick any school; otherwise ensure user belongs to it
-                    if not is_super and user.school_id and int(user.school_id) != sel_school_id:
-                        # user tried to pick a different school; ignore and use their associated school
-                        sel_school_id = int(user.school_id)
+                elif school_id and user.school_id:
+                    # Regular user selected their own school
+                    sel_school_id = int(school_id)
                 elif user.school_id:
+                    # Use user's assigned school
                     sel_school_id = int(user.school_id)
-            except Exception:
+            except (ValueError, TypeError):
+                sel_school_id = None
+            
+            # Check school-level restriction
+            if sel_school_id:
                 try:
-                    sel_school_id = int(user.school_id) if user.school_id else None
+                    sch = School.query.get(sel_school_id)
+                    if sch and getattr(sch, 'is_restricted', False) and not is_super:
+                        return render_login_error('Selected school access is restricted. Contact superadmin.')
                 except Exception:
-                    sel_school_id = None
+                    pass
 
             session['user_id'] = user.id
             session['username'] = user.username
@@ -1593,8 +1599,9 @@ def admin_dashboard():
         except Exception:
             admin_school_id = None
     classes = classes_for_school(admin_school_id)
-    # allow filtering recordings by class via query param
+    # allow filtering recordings by class and subject via query param
     selected_class = request.args.get('selected_class') or None
+    selected_subject = request.args.get('selected_subject') or None
     # Determine current school for display (admins may have a school assigned)
     school_obj = None
     try:
@@ -1620,8 +1627,12 @@ def admin_dashboard():
                 student = sess.student if sess else None
                 exam = sess.exam if sess else None
                 rec_class = getattr(student, 'student_class', None) if student else None
-                # apply class filter if requested
+                exam_subject = exam.subject.name if exam and exam.subject else None
+                
+                # apply filters if requested
                 if selected_class and selected_class.strip() and rec_class != selected_class:
+                    continue
+                if selected_subject and selected_subject.strip() and exam_subject != selected_subject:
                     continue
 
                 uploaded_at = sess.end_time or sess.start_time
@@ -1634,6 +1645,7 @@ def admin_dashboard():
                     'student_full_name': getattr(student, 'full_name', None) if student else None,
                     'student_class': rec_class,
                     'exam_id': sess.exam_id if sess else None,
+                    'exam_subject': exam_subject,
                     'status': getattr(sess, 'status', 'pending'),
                     'marks_obtained': getattr(sess, 'score', None)
                 })
@@ -1667,7 +1679,12 @@ def admin_dashboard():
                     continue
                 
                 rec_class = getattr(student, 'student_class', None)
+                exam_subject = exam.subject.name if exam.subject else None
+                
+                # apply filters
                 if selected_class and selected_class.strip() and rec_class != selected_class:
+                    continue
+                if selected_subject and selected_subject.strip() and exam_subject != selected_subject:
                     continue
                     
                 exam_results.append({
@@ -1676,7 +1693,7 @@ def admin_dashboard():
                     'student_username': getattr(student, 'username', None),
                     'student_class': rec_class,
                     'exam_title': exam.title,
-                    'subject_name': exam.subject.name if exam.subject else '—',
+                    'subject_name': exam_subject or '—',
                     'score': sess.score or 0,
                     'total_marks': exam.total_marks or 0,
                     'completed_at': sess.end_time or sess.start_time
@@ -1687,7 +1704,7 @@ def admin_dashboard():
         exam_results = []
         answers_by_session = {}
 
-    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, exam_results=exam_results, classes=classes, selected_class=selected_class, answers_by_session=answers_by_session)
+    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, exam_results=exam_results, classes=classes, selected_class=selected_class, selected_subject=selected_subject, answers_by_session=answers_by_session)
 
 
 def _require_superadmin():
