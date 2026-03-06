@@ -17,14 +17,29 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        /* Background video */
+        .background-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: -1;
         }
         .login-container {
-            background: white;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
             width: 100%;
             max-width: 400px;
+            position: relative;
+            z-index: 10;
         }
         .login-header {
             text-align: center;
@@ -117,6 +132,13 @@
     </style>
 </head>
 <body>
+    <!-- Background Video -->
+    <video class="background-video" autoplay muted loop playsinline>
+        <source src="{{ url_for('static', filename='videos/login-bg.mp4') }}" type="video/mp4">
+        <source src="{{ url_for('static', filename='videos/login-bg.webm') }}" type="video/webm">
+        <!-- Fallback: gradient background if video doesn't load -->
+    </video>
+    
     <div style="position:fixed;top:0;left:0;right:0;background:#ffffff;z-index:999;border-bottom:1px solid #eee;padding:8px 12px;text-align:center;">
         <a href="{{ url_for('community') }}" style="font-weight:700;color:#333;text-decoration:none;margin-right:12px;">Visit Community</a>
         <span style="color:#666;font-size:13px;">Community forum — admins and users can view suggestions and post feedback</span>
