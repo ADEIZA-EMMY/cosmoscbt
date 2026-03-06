@@ -85,8 +85,8 @@
                     <td>${s.created_at ? s.created_at.split('T')[0] : ''}</td>
                                         <td>
                                             <a class="btn btn-sm btn-secondary" href="/admin/student/${s.id}/edit">Edit</a>
-                                            <form method="post" action="/admin/student/${s.id}/delete" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');"><button class="btn btn-sm btn-danger">Delete</button></form>
-                                            <form method="post" action="/admin/student/${s.id}/reset_password" style="display:inline; margin-left:6px;" onsubmit="return confirm('Generate and set a new temporary password for this student?');"><button class="btn btn-sm btn-warning">Reset Password</button></form>
+                                            <form method="post" action="/admin/student/${s.id}/delete" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');"><button type="submit" class="btn btn-sm btn-danger">Delete</button></form>
+                                            <form method="post" action="/admin/student/${s.id}/reset_password" style="display:inline; margin-left:6px;" onsubmit="return confirm('Generate and set a new temporary password for this student?');"><button type="submit" class="btn btn-sm btn-warning">Reset Password</button></form>
                                         </td>`;
                 tbody.appendChild(tr);
             });

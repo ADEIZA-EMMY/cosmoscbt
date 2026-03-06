@@ -21,19 +21,28 @@
                     <div class="col-md-4">
                         <div class="card bg-light">
                             <div class="card-body text-center p-2">
-                                <h4 class="mb-1">{{ exam_session.score }}/{{ exam_session.exam.total_marks }}</h4>
+                                <h4 class="mb-1">{{ exam_session.score or 0 }}/{{ exam_session.exam.total_marks or 0 }}</h4>
+                                {% if exam_session.exam.total_marks and exam_session.exam.total_marks > 0 %}
+                                    {% set score_percentage = (exam_session.score or 0)/exam_session.exam.total_marks*100 %}
                                 <div class="progress mb-1" style="height: 18px;">
                                     <div class="progress-bar 
-                                        {% if (exam_session.score/exam_session.exam.total_marks)*100 >= 80 %}bg-success
-                                        {% elif (exam_session.score/exam_session.exam.total_marks)*100 >= 50 %}bg-warning
+                                        {% if score_percentage >= 80 %}bg-success
+                                        {% elif score_percentage >= 50 %}bg-warning
                                         {% else %}bg-danger{% endif %}" 
                                         role="progressbar" 
-                                        style="width: {{ (exam_session.score/exam_session.exam.total_marks)*100 }}%;"
-                                        aria-valuenow="{{ (exam_session.score/exam_session.exam.total_marks)*100 }}" 
+                                        style="width: {{ score_percentage }}%;"
+                                        aria-valuenow="{{ score_percentage }}" 
                                         aria-valuemin="0" aria-valuemax="100">
-                                        {{ "%.1f"|format((exam_session.score/exam_session.exam.total_marks)*100) }}%
+                                        {{ "%.1f"|format(score_percentage) }}%
                                     </div>
                                 </div>
+                                {% else %}
+                                <div class="progress mb-1" style="height: 18px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">
+                                        N/A
+                                    </div>
+                                </div>
+                                {% endif %}
                                 <p class="mb-0 small text-muted">Overall Score</p>
                             </div>
                         </div>

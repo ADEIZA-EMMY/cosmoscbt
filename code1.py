@@ -1607,6 +1607,7 @@ def admin_dashboard():
     schools = get_schools_safe()
     # CRITICAL FIX: Include recent exam sessions (not just recordings) for this admin's school
     recordings = []
+    exam_results = []
     answers_by_session = {}
     try:
         exam_ids = [e.id for e in exams]
@@ -1652,12 +1653,41 @@ def admin_dashboard():
                     answers_by_session[sess.id] = answers_list
                 except Exception:
                     answers_by_session[sess.id] = []
+            
+            # Also fetch completed exam sessions for results display
+            completed_sessions = ExamSession.query.filter(
+                ExamSession.exam_id.in_(exam_ids),
+                ExamSession.status == 'completed'
+            ).order_by(ExamSession.end_time.desc()).limit(20).all()
+            
+            for sess in completed_sessions:
+                student = sess.student if sess else None
+                exam = sess.exam if sess else None
+                if not student or not exam:
+                    continue
+                
+                rec_class = getattr(student, 'student_class', None)
+                if selected_class and selected_class.strip() and rec_class != selected_class:
+                    continue
+                    
+                exam_results.append({
+                    'session_id': sess.id,
+                    'student_full_name': getattr(student, 'full_name', None),
+                    'student_username': getattr(student, 'username', None),
+                    'student_class': rec_class,
+                    'exam_title': exam.title,
+                    'subject_name': exam.subject.name if exam.subject else '—',
+                    'score': sess.score or 0,
+                    'total_marks': exam.total_marks or 0,
+                    'completed_at': sess.end_time or sess.start_time
+                })
     except Exception as e:
         app.logger.error(f'Error loading exam sessions: {e}')
         recordings = []
+        exam_results = []
         answers_by_session = {}
 
-    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, classes=classes, selected_class=selected_class, answers_by_session=answers_by_session)
+    return render_template('admin/dashboard.html', subjects=subjects, exams=exams, students=students, school=school_obj, schools=schools, recordings=recordings, exam_results=exam_results, classes=classes, selected_class=selected_class, answers_by_session=answers_by_session)
 
 
 def _require_superadmin():
@@ -5903,26 +5933,58 @@ def admin_results():
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
     
+    # Get filter parameters
+    subject_id = request.args.get('subject_id')
+    selected_class = request.args.get('selected_class')
+    
     try:
         # Fetch all completed exam sessions - simple, direct approach
-        exam_sessions = ExamSession.query.filter_by(status='completed').order_by(ExamSession.created_at.desc()).all()
+        query = ExamSession.query.filter_by(status='completed')
         
         # If non-superadmin, filter by school after fetching
         if not session.get('is_superadmin'):
             cur_sid = _get_effective_school_id()
-            filtered_sessions = []
-            for s in exam_sessions:
-                try:
-                    if s.student and s.student.school_id == cur_sid:
-                        filtered_sessions.append(s)
-                except Exception:
-                    pass
-            exam_sessions = filtered_sessions
+            # Filter by school - need to join with student
+            query = query.join(User, ExamSession.student_id == User.id).filter(User.school_id == cur_sid)
+        
+        # Apply subject filter if specified and not "all"
+        if subject_id and subject_id != 'all':
+            try:
+                sid = int(subject_id)
+                query = query.join(Exam, ExamSession.exam_id == Exam.id).filter(Exam.subject_id == sid)
+            except Exception:
+                pass
+        
+        # Apply class filter if specified
+        if selected_class and selected_class != 'all':
+            query = query.join(User, ExamSession.student_id == User.id).filter(User.student_class == selected_class)
+        
+        exam_sessions = query.order_by(ExamSession.end_time.desc()).all()
+        
     except Exception as e:
         app.logger.error(f'Error fetching exam sessions: {e}')
         exam_sessions = []
     
     subjects = subjects_for_current_user()
+    
+    # Get all available classes
+    available_classes = set()
+    try:
+        if not session.get('is_superadmin'):
+            cur_sid = _get_effective_school_id()
+            classes_query = StudentClass.query.filter_by(school_id=cur_sid).all() if cur_sid else []
+            available_classes.update([c.name for c in classes_query if c.name])
+        else:
+            classes_query = StudentClass.query.all()
+            available_classes.update([c.name for c in classes_query if c.name])
+        
+        # Add common classes
+        common_classes = ['JSS1','JSS2','JSS3','SS1','SS2','SS3','BASIC1','BASIC2','BASIC3','BASIC4','BASIC5','BASIC6','BASIC7']
+        available_classes.update(common_classes)
+    except Exception:
+        pass
+    
+    available_classes = sorted(list(available_classes))
 
     # Pre-fetch answers per session so admin UI can show theory responses for manual marking
     answers_by_session = {}
@@ -5943,66 +6005,101 @@ def admin_results():
     except Exception:
         answers_by_session = {}
 
-    return render_template('admin/results.html', exam_sessions=exam_sessions, subjects=subjects, answers_by_session=answers_by_session)
+    return render_template('admin/results.html', exam_sessions=exam_sessions, subjects=subjects, answers_by_session=answers_by_session, available_classes=available_classes, selected_subject_id=subject_id, selected_class=selected_class)
 
 
 @app.route('/admin/results/export_subject', methods=['POST'])
 def admin_export_results_by_subject():
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'danger')
-        return redirect(url_for('login'))
+        return redirect(url_for('admin_results'))
+    
     sid = request.form.get('subject_id')
-    try:
-        subject_id = int(sid)
-    except Exception:
-        flash('Invalid subject selection', 'danger')
-        return redirect(url_for('admin_results'))
-
-    subject = Subject.query.get(subject_id)
-    if not subject:
-        flash('Subject not found', 'danger')
-        return redirect(url_for('admin_results'))
-
-    # Gather completed exam sessions for exams in this subject
-    sessions = ExamSession.query.join(Exam, ExamSession.exam_id == Exam.id).filter(Exam.subject_id==subject_id, ExamSession.status=='completed').all()
-
-    # Filter by school ownership for non-superadmins
-    filtered = []
-    cur_sid = _get_effective_school_id()
-    for s in sessions:
+    selected_class = request.form.get('selected_class')
+    
+    # Get filter parameters
+    if sid == 'all' or not sid:
+        # Export all subjects
+        subject_id = None
+        subject_name = "All_Subjects"
+    else:
         try:
-            if session.get('is_superadmin'):
-                filtered.append(s)
-            else:
-                # student must belong to current school and exam must belong to school
-                student = User.query.get(s.student_id)
-                if not student or not student.school_id:
-                    continue
-                if int(student.school_id) != int(cur_sid):
-                    continue
-                if not exam_belongs_to_school(s.exam_id, cur_sid):
-                    continue
-                filtered.append(s)
+            subject_id = int(sid)
+            subject = Subject.query.get(subject_id)
+            subject_name = subject.name.replace(' ', '_') if subject else "Unknown"
         except Exception:
-            continue
+            flash('Invalid subject selection', 'danger')
+            return redirect(url_for('admin_results'))
+    
+    # Get completed sessions
+    query = ExamSession.query.filter_by(status='completed')
+    
+    # Filter by subject if specified
+    if subject_id:
+        query = query.join(Exam, ExamSession.exam_id == Exam.id).filter(Exam.subject_id == subject_id)
+    else:
+        query = query.join(Exam, ExamSession.exam_id == Exam.id)
+    
+    # Filter by class if specified  
+    if selected_class and selected_class != 'all':
+        query = query.join(User, ExamSession.student_id == User.id).filter(User.student_class == selected_class)
+    else:
+        query = query.join(User, ExamSession.student_id == User.id)
+    
+    # Filter by school for non-superadmins
+    if not session.get('is_superadmin'):
+        cur_sid = _get_effective_school_id()
+        query = query.filter(User.school_id == cur_sid)
+    
+    sessions = query.all()
 
-    # Build Excel workbook
+    # Build Excel workbook with detailed student information
     wb = Workbook()
     ws = wb.active
-    ws.title = f"{subject.name[:28]} Results"
-    headers = ['NAME', 'SUBJECT', 'CLASS', 'SCORE', 'EXAM']
+    ws.title = "Results"
+    
+    # Enhanced headers including student details
+    headers = ['STUDENT NAME', 'USERNAME', 'CLASS', 'EXAM', 'SUBJECT', 'SCORE', 'TOTAL MARKS', 'PERCENTAGE', 'DURATION (MINS)', 'COMPLETED DATE']
     ws.append(headers)
-    for s in filtered:
+    
+    # Set column widths for better readability
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['D'].width = 25
+    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['F'].width = 10
+    ws.column_dimensions['G'].width = 12
+    ws.column_dimensions['H'].width = 12
+    ws.column_dimensions['I'].width = 15
+    ws.column_dimensions['J'].width = 15
+    
+    for s in sessions:
         try:
             student = User.query.get(s.student_id)
             exam = Exam.query.get(s.exam_id)
+            if not student or not exam:
+                continue
+            
             name = student.full_name or student.username
-            subj_name = exam.subject.name if exam and exam.subject else subject.name
-            subj_class = exam.subject_class or (exam.subject.subject_class if exam and exam.subject else '')
+            student_class = student.student_class or ""
+            exam_title = exam.title or ""
+            subj_name = exam.subject.name if exam and exam.subject else ""
             score = s.score if s.score is not None else 0
-            exam_title = exam.title if exam else ''
-            ws.append([name, subj_name, subj_class, score, exam_title])
-        except Exception:
+            total_marks = exam.total_marks or 0
+            percentage = (score / total_marks * 100) if total_marks > 0 else 0
+            
+            # Calculate duration
+            duration_mins = 0
+            if s.start_time and s.end_time:
+                delta = s.end_time - s.start_time
+                duration_mins = int(delta.total_seconds() / 60)
+            
+            completed_date = s.end_time.strftime('%Y-%m-%d %H:%M') if s.end_time else ""
+            
+            ws.append([name, student.username, student_class, exam_title, subj_name, score, total_marks, round(percentage, 2), duration_mins, completed_date])
+        except Exception as e:
+            app.logger.error(f'Error processing session: {e}')
             continue
 
     # Save to bytes
@@ -6010,7 +6107,7 @@ def admin_export_results_by_subject():
     wb.save(bio)
     bio.seek(0)
 
-    filename = f"results_{subject.name.replace(' ', '_')}.xlsx"
+    filename = f"results_{subject_name}.xlsx"
     return send_file(bio, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=filename)
 
 
@@ -6103,7 +6200,7 @@ def admin_print_theory(session_id):
 
 
 # Admin view for individual exam session results (page)
-@app.route('/admin/result/<int:session_id>')
+@app.route('/admin/result/<int:session_id>', methods=['GET', 'POST'])
 def admin_view_result(session_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'danger')
@@ -6161,7 +6258,7 @@ def admin_view_result(session_id):
     return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str)
 
 
-@app.route('/admin/result/<int:session_id>/pdf')
+@app.route('/admin/result/<int:session_id>/pdf', methods=['GET', 'POST'])
 def admin_result_pdf(session_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'danger')
@@ -6966,7 +7063,7 @@ def student_results():
     
     return render_template('student/results.html', exam_sessions=exam_sessions)
 
-@app.route('/student/result/<int:session_id>')
+@app.route('/student/result/<int:session_id>', methods=['GET', 'POST'])
 def view_result(session_id):
     if 'user_id' not in session or session['role'] != 'student':
         flash('Access denied', 'danger')
@@ -7011,7 +7108,7 @@ def view_result(session_id):
                          time_used=time_used_str)
 
 
-@app.route('/student/result/<int:session_id>/pdf')
+@app.route('/student/result/<int:session_id>/pdf', methods=['GET', 'POST'])
 def result_pdf(session_id):
     # Generate a printable PDF of the marked script (fallback to HTML)
     if 'user_id' not in session or session['role'] != 'student':
