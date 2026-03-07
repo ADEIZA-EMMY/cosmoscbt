@@ -17,8 +17,8 @@
         <div class="input-group" style="max-width:420px;">
                 <select id="class_select" name="class" class="form-select" onchange="loadStudents(this.value);">
                 <option value="">-- choose class --</option>
+                <option value="ALL" {% if selected_class == 'ALL' %}selected{% endif %}>All Students</option>
                 {% if classes %}
-                    <option value="ALL" {% if selected_class == 'ALL' %}selected{% endif %}>All Students</option>
                     {% for cl in classes %}
                         <option value="{{ cl }}" {% if selected_class == cl %}selected{% endif %}>{{ cl }}</option>
                     {% endfor %}
