@@ -1,63 +1,252 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .student-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 8px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .student-header h2 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 600;
+    }
+    .class-selector-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+        margin-bottom: 20px;
+    }
+    .class-selector-card label {
+        color: #333;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    .class-selector-card .input-group {
+        max-width: 500px;
+    }
+    .btn-action-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .btn-action-group .btn {
+        font-weight: 500;
+    }
+    .btn-export {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border: none;
+        color: white;
+    }
+    .btn-export:hover {
+        background: linear-gradient(135deg, #0f7a6a 0%, #2ac96f 100%);
+        color: white;
+    }
+    .btn-template {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+    }
+    .btn-template:hover {
+        background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
+        color: white;
+    }
+    .btn-import {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        border: none;
+        color: white;
+    }
+    .btn-import:hover {
+        background: linear-gradient(135deg, #e07ae5 0%, #e63b54 100%);
+        color: white;
+    }
+    .table-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+    }
+    .table thead {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    .table thead th {
+        border: none;
+        padding: 12px;
+        font-weight: 600;
+    }
+    .table tbody tr {
+        transition: background-color 0.3s ease;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .table tbody tr:hover {
+        background-color: #f0f4ff;
+    }
+    .table tbody tr:nth-child(even) {
+        background-color: #f8f9fa;
+    }
+    .table tbody tr:nth-child(even):hover {
+        background-color: #f0f4ff;
+    }
+    .table td {
+        padding: 12px;
+        vertical-align: middle;
+    }
+    .action-buttons {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+    .btn-action {
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    .btn-edit-action {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        border: none;
+        color: white;
+    }
+    .btn-edit-action:hover {
+        background: linear-gradient(135deg, #3d9eed 0%, #00e4ec 100%);
+        color: white;
+    }
+    .btn-delete-action {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        border: none;
+        color: white;
+    }
+    .btn-delete-action:hover {
+        background: linear-gradient(135deg, #e07ae5 0%, #e63b54 100%);
+        color: white;
+    }
+    .btn-reset-action {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        border: none;
+        color: white;
+    }
+    .btn-reset-action:hover {
+        background: linear-gradient(135deg, #f85d7f 0%, #f5d930 100%);
+        color: white;
+    }
+    .bulk-delete-section {
+        background: #fff3cd;
+        border: 2px solid #ffc107;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        display: none;
+    }
+    .bulk-delete-section.show {
+        display: block;
+    }
+    .footer-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .footer-actions .btn {
+        font-weight: 600;
+    }
+    .form-label {
+        color: #333;
+        font-weight: 600;
+    }
+    #student-search {
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    #student-search:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+</style>
+
 <div class="container">
-    <h3 class="mb-3">Manage Students</h3>
+    <div class="student-header">
+        <h2>👥 Manage Students</h2>
+    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, msg in messages %}
-          <div class="alert alert-{{ category }}">{{ msg }}</div>
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
         {% endfor %}
       {% endif %}
     {% endwith %}
 
-    <form method="get" class="mb-3">
-            <label for="class_select">Select Class:</label>
-        <div class="input-group" style="max-width:420px;">
+    <div class="class-selector-card">
+        <form method="get" class="mb-0">
+            <label for="class_select">📚 Select Class:</label>
+            <div class="input-group">
                 <select id="class_select" name="class" class="form-select" onchange="loadStudents(this.value);">
-                <option value="">-- choose class --</option>
-                <option value="ALL" {% if selected_class == 'ALL' %}selected{% endif %}>All Students</option>
-                {% if classes %}
-                    {% for cl in classes %}
-                        <option value="{{ cl }}" {% if selected_class == cl %}selected{% endif %}>{{ cl }}</option>
-                    {% endfor %}
-                {% endif %}
-            </select>
-                <button class="btn btn-primary" id="class-show-btn" type="button">Show</button>
-        </div>
-    </form>
-
-    <div class="mb-3">
-        <div class="d-flex gap-2 align-items-center">
-            <a id="export-csv-link" href="{{ url_for('admin_export_students') }}" class="btn btn-outline-success">Export Students (CSV)</a>
-            <a id="export-xlsx-link" href="{{ url_for('admin_export_students_xlsx') }}" class="btn btn-outline-success">Export Students (XLSX)</a>
-            <a id="template-csv-link" href="{{ url_for('admin_students_template') }}" class="btn btn-outline-secondary">Download Template (CSV)</a>
-            <a id="template-xlsx-link" href="{{ url_for('admin_students_template_xlsx') }}" class="btn btn-outline-secondary">Download Template (XLSX)</a>
-            <form id="import-csv-form" method="post" action="{{ url_for('admin_import_students') }}" enctype="multipart/form-data" style="display:inline-block;">
-                <input type="hidden" name="class" id="import-csv-class" value="">
-                <input type="file" name="file" accept="text/csv" required>
-                <button class="btn btn-outline-primary">Import CSV</button>
-            </form>
-            <form id="import-xlsx-form" method="post" action="{{ url_for('admin_import_students_xlsx') }}" enctype="multipart/form-data" style="display:inline-block;">
-                <input type="hidden" name="class" id="import-xlsx-class" value="">
-                <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-                <button class="btn btn-outline-primary">Import XLSX</button>
-            </form>
-        </div>
-        <small class="text-muted">CSV/XLSX columns: <code>username</code>, <code>full_name</code>, <code>student_class</code>, <code>temp_password</code>, <code>school</code></small>
+                    <option value="">-- choose class --</option>
+                    <option value="ALL" {% if selected_class == 'ALL' %}selected{% endif %}>All Students</option>
+                    {% if classes %}
+                        {% for cl in classes %}
+                            <option value="{{ cl }}" {% if selected_class == cl %}selected{% endif %}>{{ cl }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+                <button class="btn" id="class-show-btn" type="button" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">Show</button>
+            </div>
+        </form>
     </div>
+
+    <div class="btn-action-group">
+        <a id="export-csv-link" href="{{ url_for('admin_export_students') }}" class="btn btn-export">📊 Export Students (CSV)</a>
+        <a id="export-xlsx-link" href="{{ url_for('admin_export_students_xlsx') }}" class="btn btn-export">📊 Export Students (XLSX)</a>
+        <a id="template-csv-link" href="{{ url_for('admin_students_template') }}" class="btn btn-template">📋 Download Template (CSV)</a>
+        <a id="template-xlsx-link" href="{{ url_for('admin_students_template_xlsx') }}" class="btn btn-template">📋 Download Template (XLSX)</a>
+        <form id="import-csv-form" method="post" action="{{ url_for('admin_import_students') }}" enctype="multipart/form-data" style="display:inline-block;">
+            <input type="hidden" name="class" id="import-csv-class" value="">
+            <input type="file" name="file" accept="text/csv" required style="display:none;" id="csv-file-input">
+            <button type="button" class="btn btn-import" onclick="document.getElementById('csv-file-input').click();">📥 Import CSV</button>
+            <script>
+                document.getElementById('csv-file-input').addEventListener('change', function() {
+                    document.getElementById('import-csv-form').submit();
+                });
+            </script>
+        </form>
+        <form id="import-xlsx-form" method="post" action="{{ url_for('admin_import_students_xlsx') }}" enctype="multipart/form-data" style="display:inline-block;">
+            <input type="hidden" name="class" id="import-xlsx-class" value="">
+            <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required style="display:none;" id="xlsx-file-input">
+            <button type="button" class="btn btn-import" onclick="document.getElementById('xlsx-file-input').click();">📥 Import XLSX</button>
+            <script>
+                document.getElementById('xlsx-file-input').addEventListener('change', function() {
+                    document.getElementById('import-xlsx-form').submit();
+                });
+            </script>
+        </form>
+    </div>
+    <small class="text-muted d-block mb-4">💡 CSV/XLSX columns: <code>username</code>, <code>full_name</code>, <code>student_class</code>, <code>temp_password</code>, <code>school</code></small>
 
     <script>
     // Function to setup checkbox listeners - called after AJAX loads and on page load
     function setupCheckboxListeners(){
         const selectAll = document.getElementById('select_all_students');
         const checkboxes = document.querySelectorAll('.student-checkbox');
-        const bulkBtn = document.getElementById('bulk-delete-btn');
+        const bulkSection = document.getElementById('bulk-delete-section');
         const bulkIds = document.getElementById('bulk-user-ids');
+        const selectedCount = document.getElementById('selected-count');
         
         function updateBulkState(){
             const checked = Array.from(checkboxes).filter(c=>c.checked);
+            const ids = checked.map(c=>c.value).join(',');
+            
+            if(bulkIds) bulkIds.value = ids;
+            if(selectedCount) selectedCount.textContent = checked.length;
+            if(bulkSection) bulkSection.classList.toggle('show', checked.length > 0);
 
             if(selectAll){
                 selectAll.checked = checkboxes.length > 0 && checkboxes.length === checked.length;
@@ -155,56 +344,73 @@
     <div id="no-class-alert" class="alert alert-info" {% if selected_class %}style="display:none;"{% endif %}>Please select a class to view students.</div>
 
     <div class="mb-2">
-        <label for="student-search" class="form-label">Quick filter in selected class</label>
+        <label for="student-search" class="form-label">🔍 Quick filter in selected class</label>
         <input id="student-search" class="form-control" placeholder="Type username or full name to filter" />
     </div>
-    <table class="table table-striped">
-        <thead>
-                <tr>
-                <th><input type="checkbox" id="select_all_students"> <label for="select_all_students" style="cursor:pointer;">Select All</label></th>
-                <th>ID</th>
-                <th>Username</th>
-                <th>Full Name</th>
-                <th>Class</th>
-                <th>Gender</th>
-                <th>Temp Password</th>
-                <th>Created</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% if students %}
-                {% for student in students %}
-                <tr>
-                    <td><input type="checkbox" name="selected_students" value="{{ student.id }}" class="student-checkbox"></td>
-                    <td>{{ student.id }}</td>
-                    <td>{{ student.username }}</td>
-                    <td>{{ student.full_name or '' }}</td>
-                    <td>{{ student.student_class or '—' }}</td>
-                    <td>{{ student.gender or '—' }}</td>
-                    <td>{{ student.temp_password or '—' }}</td>
-                    <td>{{ student.created_at.strftime('%Y-%m-%d') }}</td>
-                    <td>
-                        <a href="{{ url_for('admin_edit_student', user_id=student.id) }}" class="btn btn-sm btn-secondary">Edit</a>
-                        <form method="post" action="{{ url_for('admin_delete_student', user_id=student.id) }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');">
-                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                        </form>
-                        <form method="post" action="{{ url_for('admin_reset_student_password', user_id=student.id) }}" style="display:inline; margin-left:6px;" onsubmit="return confirm('Generate and set a new temporary password for this student?');">
-                            <button type="submit" class="btn btn-sm btn-warning">Reset Password</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            {% else %}
-                <!-- table starts empty; populated by AJAX when a class is selected -->
-            {% endif %}
-        </tbody>
-    </table>
 
-    <form id="bulk-delete-form" method="post" action="{{ url_for('admin_delete_selected_students') }}" onsubmit="if (!document.getElementById('bulk-user-ids').value) { alert('No students selected'); return false; } return confirm('Delete selected students and all their sessions?');">
-        <input type="hidden" name="user_ids" id="bulk-user-ids">
-        <button type="submit" class="btn btn-danger" id="bulk-delete-btn">Delete Selected</button>
-    </form>
+    <div class="table-card">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="select_all_students"> <label for="select_all_students" style="cursor:pointer; margin: 0;">Select All</label></th>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Class</th>
+                    <th>Gender</th>
+                    <th>Temp Password</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if students %}
+                    {% for student in students %}
+                    <tr>
+                        <td><input type="checkbox" name="selected_students" value="{{ student.id }}" class="student-checkbox"></td>
+                        <td><span class="badge bg-info">{{ student.id }}</span></td>
+                        <td><strong>{{ student.username }}</strong></td>
+                        <td>{{ student.full_name or '' }}</td>
+                        <td><span class="badge bg-primary">{{ student.student_class or '—' }}</span></td>
+                        <td>{{ student.gender or '—' }}</td>
+                        <td><code>{{ student.temp_password or '—' }}</code></td>
+                        <td><small>{{ student.created_at.strftime('%Y-%m-%d') }}</small></td>
+                        <td>
+                            <div class="action-buttons">
+                                <a href="{{ url_for('admin_edit_student', user_id=student.id) }}" class="btn btn-action btn-sm btn-edit-action">✏️ Edit</a>
+                                <form method="post" action="{{ url_for('admin_delete_student', user_id=student.id) }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their sessions?');">
+                                    <button type="submit" class="btn btn-action btn-sm btn-delete-action">🗑️ Delete</button>
+                                </form>
+                                <form method="post" action="{{ url_for('admin_reset_student_password', user_id=student.id) }}" style="display:inline;" onsubmit="return confirm('Generate and set a new temporary password for this student?');">
+                                    <button type="submit" class="btn btn-action btn-sm btn-reset-action">🔑 Reset</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <small><!-- table starts empty; populated by AJAX when a class is selected --></small>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="bulk-delete-section" id="bulk-delete-section">
+        <form id="bulk-delete-form" method="post" action="{{ url_for('admin_delete_selected_students') }}" onsubmit="if (!document.getElementById('bulk-user-ids').value) { alert('No students selected'); return false; } return confirm('Delete selected students and all their sessions?');">
+            <input type="hidden" name="user_ids" id="bulk-user-ids">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <strong>⚠️ Bulk Delete Selected Students</strong>
+                    <small class="d-block text-muted">Selected: <span id="selected-count">0</span> student(s)</small>
+                </div>
+                <button type="submit" class="btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: none;">🗑️ Delete Selected</button>
+            </div>
+        </form>
+    </div>
 
     <script>
         // Initialize checkbox listeners on page load
@@ -227,9 +433,9 @@
         })();
     </script>
 
-    <div class="d-flex justify-content-between">
-        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
-        <a href="{{ url_for('admin_add_student') }}" class="btn btn-primary">Add Student</a>
+    <div class="footer-actions">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">← Back to Dashboard</a>
+        <a href="{{ url_for('admin_add_student') }}" class="btn" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; border: none;">➕ Add Student</a>
     </div>
 </div>
 {% endblock %}
