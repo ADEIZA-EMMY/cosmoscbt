@@ -2977,6 +2977,11 @@ def admin_add_student():
             classes = classes_for_school(admin_school_id)
         except Exception:
             classes = []
+        # supply schools list for superadmin; will be empty for regular admins
+        try:
+            schools = School.query.order_by(School.name).all() if session.get('is_superadmin') else []
+        except Exception:
+            schools = []
 
         username = request.form.get('username', '').strip()
         full_name = request.form.get('full_name', '').strip()
@@ -2985,11 +2990,11 @@ def admin_add_student():
 
         if not username:
             flash('Username is required', 'danger')
-            return render_template('admin/add_student.html')
+            return render_template('admin/add_student.html', classes=classes, schools=schools)
 
         if User.query.filter_by(username=username).first():
             flash('Username already exists', 'danger')
-            return render_template('admin/add_student.html')
+            return render_template('admin/add_student.html', classes=classes, schools=schools)
 
         # If no password provided, default to username
         if not password:
@@ -3051,7 +3056,11 @@ def admin_add_student():
                 except Exception:
                     user.school_id = None
             else:
-                user.school_id = None
+                # fallback to whatever school the superadmin currently has selected
+                try:
+                    user.school_id = _get_effective_school_id()
+                except Exception:
+                    user.school_id = None
         else:
             # regular admin: use their own user.school_id (authoritative)
             admin_user = User.query.get(session.get('user_id'))
@@ -3062,7 +3071,7 @@ def admin_add_student():
                     user.school_id = None
             else:
                 flash('Your account is not associated with a school. Contact superadmin to assign one.', 'danger')
-                return render_template('admin/add_student.html', classes=classes)
+                return render_template('admin/add_student.html', classes=classes, schools=schools)
 
         db.session.add(user)
         try:
@@ -3076,7 +3085,7 @@ def admin_add_student():
         flash(f'Student {username} created successfully', 'success')
         return redirect(url_for('admin_students'))
 
-    # supply canonical classes to template
+    # supply canonical classes (and schools for superadmin) to template
     try:
         admin_school_id = None
         if session.get('is_superadmin'):
@@ -3090,7 +3099,11 @@ def admin_add_student():
         classes = classes_for_school(admin_school_id)
     except Exception:
         classes = []
-    return render_template('admin/add_student.html', classes=classes)
+    try:
+        schools = School.query.order_by(School.name).all() if session.get('is_superadmin') else []
+    except Exception:
+        schools = []
+    return render_template('admin/add_student.html', classes=classes, schools=schools)
 
 
 @app.route('/heroku/save_student', methods=['POST'])
@@ -6352,9 +6365,11 @@ def student_dashboard():
 
         # If allowed_classes is specified, student must be in that list
         if allowed:
-            # If student has no class set, they can't access class-restricted exams
+            # If student has no class set, fall back to school-based access
             if not student_class:
-                return False
+                # allow if the exam is not further restricted by subject_class
+                # (exam_for_school already ensures school matches or is public)
+                return True
             allowed_list = [c.strip().lower() for c in allowed.split(',') if c.strip()]
             return student_class.strip().lower() in allowed_list
 

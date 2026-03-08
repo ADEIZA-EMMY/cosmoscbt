@@ -318,6 +318,83 @@ def test_json_endpoints():
     
     return passed >= 1
 
+
+def test_student_school_and_exam_access():
+    """Ensure admin-created students receive a school and can access exams appropriately."""
+    print_header("TEST 7: STUDENT SCHOOL & EXAM ACCESS")
+    app.testing = True
+    client = app.test_client()
+
+    # first create necessary objects via ORM to keep things simple
+    with app.app_context():
+        school = School(name='Test School X', code='TSX', access_code='ABC123')
+        db.session.add(school)
+        db.session.commit()
+        admin = User(username='adm_school', role='admin')
+        admin.set_password('pass')
+        admin.school_id = school.id
+        db.session.add(admin)
+        db.session.commit()
+        # create a subject and exam restricted to class "Alpha"
+        subj = Subject(name='Demo Subj', created_by=admin.id, school_id=school.id, subject_class='Alpha')
+        db.session.add(subj)
+        db.session.commit()
+        exam = Exam(subject_id=subj.id, title='Alpha Exam', duration=15,
+                    subject_class='Alpha', allowed_classes='Alpha', is_active=True,
+                    code='ALPHA1', total_marks=50, created_by=admin.id,
+                    school_id=school.id)
+        db.session.add(exam)
+        db.session.commit()
+
+    # simulate admin session and add a student via POST
+    with client.session_transaction() as sess:
+        sess['user_id'] = admin.id
+        sess['role'] = 'admin'
+    resp = client.get('/admin/student/add')
+    assert resp.status_code == 200
+    # post student without specifying class (should still get school assigned)
+    resp = client.post('/admin/student/add', data={
+        'username': 'stu_alpha',
+        'full_name': 'Stu Alpha',
+        # deliberately omit student_class and school_id to test fallback
+    }, follow_redirects=True)
+    assert resp.status_code < 400
+
+    # login as the new student and check dashboard
+    with client.session_transaction() as sess:
+        student = User.query.filter_by(username='stu_alpha').first()
+        sess['user_id'] = student.id
+        sess['role'] = 'student'
+    resp = client.get('/student/dashboard')
+    assert b'Alpha Exam' in resp.data, "Student should see the exam even without class"
+    assert student.school_id == school.id
+    assert b'School:' in resp.data
+
+    # now create another student via ORM with a class and verify access
+    with app.app_context():
+        stu2 = User(username='stu_beta', role='student', student_class='Alpha', school_id=school.id)
+        stu2.set_password('pass')
+        db.session.add(stu2)
+        db.session.commit()
+    with client.session_transaction() as sess:
+        sess['user_id'] = stu2.id
+        sess['role'] = 'student'
+    resp = client.get('/student/dashboard')
+    assert b'Alpha Exam' in resp.data
+
+    # now test bulk deletion as admin: delete both students
+    with client.session_transaction() as sess:
+        sess['user_id'] = admin.id
+        sess['role'] = 'admin'
+    ids = f"{student.id},{stu2.id}"
+    resp = client.post('/admin/students/delete_selected', data={'user_ids': ids}, follow_redirects=True)
+    assert resp.status_code < 400
+    # confirm they are gone
+    with app.app_context():
+        assert User.query.filter_by(username='stu_alpha').first() is None
+        assert User.query.filter_by(username='stu_beta').first() is None
+    return True
+
 def generate_report():
     """Generate comprehensive test report."""
     print_header("TEST SUITE: PostgreSQL CBT APPLICATION")
@@ -334,6 +411,7 @@ def generate_report():
         'Admin Routes': test_admin_routes(),
         'File Operations': test_file_operations(),
         'JSON Endpoints': test_json_endpoints(),
+        'Student School & Exam Access': test_student_school_and_exam_access(),
     }
     
     # Summary
