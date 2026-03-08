@@ -2583,7 +2583,7 @@ def admin_students():
     except Exception:
         classes = []
 
-    selected_class = request.args.get('class')
+    selected_class = request.args.get('class', 'ALL')
     students = []
     if selected_class:
         try:
