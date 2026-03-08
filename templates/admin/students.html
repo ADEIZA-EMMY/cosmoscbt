@@ -58,9 +58,7 @@
         
         function updateBulkState(){
             const checked = Array.from(checkboxes).filter(c=>c.checked);
-            bulkBtn.disabled = checked.length === 0;
-            bulkIds.value = checked.map(c=>c.value).join(',');
-            // Update select-all checkbox state
+
             if(selectAll){
                 selectAll.checked = checkboxes.length > 0 && checkboxes.length === checked.length;
             }
@@ -163,7 +161,7 @@
     <table class="table table-striped">
         <thead>
                 <tr>
-                <th><input type="checkbox" id="select_all_students"></th>
+                <th><input type="checkbox" id="select_all_students"> <label for="select_all_students" style="cursor:pointer;">Select All</label></th>
                 <th>ID</th>
                 <th>Username</th>
                 <th>Full Name</th>
@@ -203,9 +201,9 @@
         </tbody>
     </table>
 
-    <form id="bulk-delete-form" method="post" action="{{ url_for('admin_delete_selected_students') }}" onsubmit="return confirm('Delete selected students and all their sessions?');">
+    <form id="bulk-delete-form" method="post" action="{{ url_for('admin_delete_selected_students') }}" onsubmit="if (!document.getElementById('bulk-user-ids').value) { alert('No students selected'); return false; } return confirm('Delete selected students and all their sessions?');">
         <input type="hidden" name="user_ids" id="bulk-user-ids">
-        <button type="submit" class="btn btn-danger" id="bulk-delete-btn" disabled>Delete Selected</button>
+        <button type="submit" class="btn btn-danger" id="bulk-delete-btn">Delete Selected</button>
     </form>
 
     <script>
