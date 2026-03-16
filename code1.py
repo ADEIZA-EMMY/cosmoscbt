@@ -1444,6 +1444,14 @@ def register():
                 pass
         if school:
             user.school_id = school.id
+        else:
+            # Assign to default school if no school selected
+            try:
+                default_school = School.query.first()
+                if default_school:
+                    user.school_id = default_school.id
+            except Exception:
+                pass
         db.session.add(user)
         db.session.commit()
         try:
@@ -3174,8 +3182,8 @@ def admin_delete_student(user_id):
     # Ensure admin may only delete students from their own school (unless superadmin)
     try:
         if not session.get('is_superadmin'):
-            cur_sid = _get_session_school_id()
-            if not user.school_id or int(user.school_id) != int(cur_sid):
+            cur_sid = _get_effective_school_id()
+            if cur_sid is not None and user.school_id is not None and int(user.school_id) != int(cur_sid):
                 flash('You may only delete students from your school.', 'danger')
                 return redirect(url_for('admin_students'))
     except Exception:
@@ -3365,8 +3373,8 @@ def admin_delete_selected_students():
             # Ensure we only delete students belonging to this admin's school (unless superadmin)
             if not session.get('is_superadmin'):
                 try:
-                    cur_sid = _get_session_school_id()
-                    if not user.school_id or int(user.school_id) != int(cur_sid):
+                    cur_sid = _get_effective_school_id()
+                    if cur_sid is not None and user.school_id is not None and int(user.school_id) != int(cur_sid):
                         continue
                 except Exception:
                     continue
