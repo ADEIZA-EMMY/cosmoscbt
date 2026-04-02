@@ -6551,23 +6551,15 @@ def admin_view_result(session_id):
     questions = []
     for answer in answers:
         question = Question.query.get(answer.question_id)
-        is_theory_q = bool(question and getattr(question, 'is_theory', False))
-        # theory correctness relates to awarded marks; objective correctness from stored value
-        is_correct = False
-        if is_theory_q:
-            is_correct = (int(getattr(answer, 'marks_obtained', 0) or 0) > 0)
-        else:
-            is_correct = bool(answer.is_correct)
-
+        is_theory = getattr(question, 'is_theory', False)
         questions.append({
             'answer_id': answer.id,
             'question': question,
             'selected_answer': answer.selected_answer,
-            'is_correct': is_correct,
+            'is_correct': answer.is_correct,
             'text_response': getattr(answer, 'text_response', None),
-            'marks_obtained': int(getattr(answer, 'marks_obtained', 0) or 0),
-            'max_marks': int(getattr(question, 'marks', 0) or 0),
-            'is_theory': is_theory_q,
+            'marks_obtained': getattr(answer, 'marks_obtained', None) or 0,
+            'is_theory': is_theory
         })
 
     # Compute time used
@@ -6609,12 +6601,12 @@ def admin_grade_theory(session_id):
             except Exception:
                 score = 0
             score = max(0, min(score, int(question.marks or 0)))
-            # Attach marks_obtained and correctness status to answer
-            try:
-                answer.marks_obtained = score
-                answer.is_correct = (score > 0)
-            except Exception:
-                pass
+            
+            # Set marks_obtained from admin dropdown
+            answer.marks_obtained = score
+            
+            # Set is_correct based on marks: 0 marks = incorrect, >0 marks = correct
+            answer.is_correct = (score > 0)
 
         db.session.commit()
     except Exception as e:
@@ -7576,20 +7568,15 @@ def view_result(session_id):
 
     for answer in answers:
         question = Question.query.get(answer.question_id)
-        is_theory_q = bool(question and getattr(question, 'is_theory', False))
-        is_correct = False
-        if is_theory_q:
-            is_correct = (int(getattr(answer, 'marks_obtained', 0) or 0) > 0)
-        else:
-            is_correct = bool(answer.is_correct)
-
+        is_theory = getattr(question, 'is_theory', False)
+        marks_obtained = int(getattr(answer, 'marks_obtained', 0) or 0) if is_theory else 0
         questions.append({
             'question': question,
             'selected_answer': answer.selected_answer,
-            'is_correct': is_correct,
-            'marks_obtained': int(getattr(answer, 'marks_obtained', 0) or 0),
-            'max_marks': int(getattr(question, 'marks', 0) or 0),
-            'is_theory': is_theory_q,
+            'text_response': getattr(answer, 'text_response', None),
+            'is_correct': answer.is_correct,
+            'is_theory': is_theory,
+            'marks_obtained': marks_obtained
         })
 
     # Compute time used: prefer end_time - start_time, otherwise now - start_time
@@ -7630,20 +7617,15 @@ def result_pdf(session_id):
     questions = []
     for answer in answers:
         question = Question.query.get(answer.question_id)
-        is_theory_q = bool(question and getattr(question, 'is_theory', False))
-        is_correct = False
-        if is_theory_q:
-            is_correct = (int(getattr(answer, 'marks_obtained', 0) or 0) > 0)
-        else:
-            is_correct = bool(answer.is_correct)
-
+        is_theory = getattr(question, 'is_theory', False)
+        marks_obtained = int(getattr(answer, 'marks_obtained', 0) or 0) if is_theory else 0
         questions.append({
             'question': question,
             'selected_answer': answer.selected_answer,
-            'is_correct': is_correct,
-            'marks_obtained': int(getattr(answer, 'marks_obtained', 0) or 0),
-            'max_marks': int(getattr(question, 'marks', 0) or 0),
-            'is_theory': is_theory_q,
+            'text_response': getattr(answer, 'text_response', None),
+            'is_correct': answer.is_correct,
+            'is_theory': is_theory,
+            'marks_obtained': marks_obtained
         })
 
     # Compute time used for PDF as well
