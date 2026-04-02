@@ -23,6 +23,7 @@ def migrate_exam_schema():
                 ('school_code', "VARCHAR(50)"),
                 ('is_active', "BOOLEAN DEFAULT true"),
                 ('question_set_id', 'INTEGER'),
+                ('record_session', "BOOLEAN DEFAULT false"),
             ]
             
             for col_name, col_type in columns_to_add:
