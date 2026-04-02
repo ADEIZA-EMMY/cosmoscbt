@@ -31,6 +31,16 @@
             
             <form method="post" action="/login">
                 <div class="mb-3">
+                    <label for="school_name" class="form-label">School</label>
+                    <input type="text" class="form-control" id="school_name" name="school_name" list="schools" required>
+                    <datalist id="schools">
+                        {% for school in schools %}
+                        <option value="{{ school.name }}">
+                        {% endfor %}
+                    </datalist>
+                    <div class="form-text">Type to search and select your school.</div>
+                </div>
+                <div class="mb-3">
                     <label for="username" class="form-label">Username</label>
                     <input type="text" class="form-control" id="username" name="username" required>
                 </div>

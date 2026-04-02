@@ -14,11 +14,24 @@
     </div>
     <div class="card-body">
         {% if exams %}
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>ID</th>
+        <div class="d-flex justify-content-between mb-3">
+            <div>
+                <button id="select-all-exams" type="button" class="btn btn-sm btn-outline-primary me-2">Select All</button>
+                <button id="delete-selected-exams" type="button" class="btn btn-sm btn-danger">Delete Selected</button>
+            </div>
+            <form id="delete-all-exams-form" method="POST" action="{{ url_for('admin_delete_all_exams') }}" style="margin:0;">
+                <button type="submit" class="btn btn-sm btn-danger">Delete All Exams</button>
+            </form>
+        </div>
+
+        <form id="exams-action-form" method="POST" action="{{ url_for('admin_delete_selected_exams') }}">
+            <input type="hidden" name="ids" id="selected-exam-ids" value="">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="check-all-exams"></th>
+                            <th>ID</th>
                         <th>Title</th>
                         <th>Subject</th>
                         <th>Duration</th>
@@ -31,6 +44,7 @@
                 <tbody>
                     {% for exam in exams %}
                     <tr>
+                        <td><input type="checkbox" class="exam-checkbox" value="{{ exam.id }}"></td>
                         <td>{{ exam.id }}</td>
                         <td>{{ exam.title }}</td>
                         <td>{{ exam.subject.name }}</td>
@@ -120,6 +134,7 @@
                 </tbody>
             </table>
         </div>
+        </form>
         {% else %}
         <div class="text-center py-4">
             <i class="fas fa-file-alt fa-3x text-muted mb-3"></i>
@@ -129,4 +144,40 @@
         {% endif %}
     </div>
 </div>
+<script>
+function updateExamSelectionInput() {
+    const selected = Array.from(document.querySelectorAll('.exam-checkbox:checked')).map(cb => cb.value);
+    document.getElementById('selected-exam-ids').value = selected.join(',');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const checkAll = document.getElementById('check-all-exams');
+    const examCheckboxes = Array.from(document.querySelectorAll('.exam-checkbox'));
+
+    checkAll?.addEventListener('change', (e) => {
+        examCheckboxes.forEach(cb => cb.checked = e.target.checked);
+        updateExamSelectionInput();
+    });
+
+    examCheckboxes.forEach(cb => cb.addEventListener('change', updateExamSelectionInput));
+
+    document.getElementById('select-all-exams').addEventListener('click', () => {
+        examCheckboxes.forEach(cb => cb.checked = true);
+        checkAll.checked = true;
+        updateExamSelectionInput();
+    });
+
+    document.getElementById('delete-selected-exams').addEventListener('click', () => {
+        updateExamSelectionInput();
+        if (!document.getElementById('selected-exam-ids').value) {
+            alert('Please select at least one exam to delete.');
+            return;
+        }
+        if (confirm('Delete selected exams? This cannot be undone.')) {
+            document.getElementById('exams-action-form').submit();
+        }
+    });
+});
+</script>
+
 {% endblock %}

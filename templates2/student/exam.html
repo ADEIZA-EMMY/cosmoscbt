@@ -138,17 +138,6 @@ function loadQuestion(index) {
 function renderQuestion(question) {
     const container = document.getElementById('exam-container');
     
-    let optionsHtml = question.options.map(option => `
-        <div class="form-check mb-2">
-            <input class="form-check-input" type="radio" name="answer" 
-                   id="option-${option.letter}" value="${option.letter}"
-                   ${question.selected_answer === option.letter ? 'checked' : ''}>
-            <label class="form-check-label" for="option-${option.letter}">
-                <strong>${option.letter}.</strong> ${option.text}
-            </label>
-        </div>
-    `).join('');
-    
     container.innerHTML = `
         <div class="question-container">
             <h5>Question ${currentQuestionIndex + 1} (${question.marks} mark${question.marks > 1 ? 's' : ''})</h5>
@@ -157,20 +146,44 @@ function renderQuestion(question) {
                     <p class="card-text">${question.text}</p>
                 </div>
             </div>
-            
+            ${question.is_theory ? `
+            <h6>Write your theory answer:</h6>
+            <textarea id="theory-response" class="form-control mb-3" rows="10" placeholder="Type your answer here...">${question.text_response || ''}</textarea>
+            <div class="form-text">Your answer is saved automatically while you type.</div>
+            ` : `
             <h6>Select your answer:</h6>
             <div class="options-container">
-                ${optionsHtml}
+                ${question.options.map(option => `
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="answer" 
+                               id="option-${option.letter}" value="${option.letter}"
+                               ${question.selected_answer === option.letter ? 'checked' : ''}>
+                        <label class="form-check-label" for="option-${option.letter}">
+                            <strong>${option.letter}.</strong> ${option.text}
+                        </label>
+                    </div>
+                `).join('')}
             </div>
+            `}
         </div>
     `;
-    
-    // Add event listeners to radio buttons
-    document.querySelectorAll('input[name="answer"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            saveAnswer(e.target.value);
+
+    if (question.is_theory) {
+        const theoryTextarea = document.getElementById('theory-response');
+        let saveTimer = null;
+        const saveFn = () => saveAnswer(theoryTextarea.value);
+        theoryTextarea.addEventListener('input', () => {
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveFn, 500);
         });
-    });
+        theoryTextarea.addEventListener('blur', saveFn);
+    } else {
+        document.querySelectorAll('input[name="answer"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                saveAnswer(e.target.value);
+            });
+        });
+    }
 }
 
 // Save the current answer
@@ -220,16 +233,38 @@ document.addEventListener('DOMContentLoaded', function() {
     // Start the timer
     startTimer();
     
-    // Set up navigation
+    // Helper to persist the current input before navigating
+    function saveCurrentAnswerAndMove(targetIndex) {
+        const total = totalQuestions;
+        if (typeof total !== 'number' || total === 0) {
+            loadQuestion(targetIndex);
+            return;
+        }
+
+        const theoryField = document.getElementById('theory-response');
+        if (theoryField) {
+            saveAnswer(theoryField.value);
+        } else {
+            const selected = document.querySelector('input[name="answer"]:checked');
+            saveAnswer(selected ? selected.value : null);
+        }
+
+        setTimeout(() => {
+            if (targetIndex >= 0 && targetIndex < totalQuestions) {
+                loadQuestion(targetIndex);
+            }
+        }, 120);
+    }
+
     document.getElementById('prev-btn').addEventListener('click', () => {
         if (currentQuestionIndex > 0) {
-            loadQuestion(currentQuestionIndex - 1);
+            saveCurrentAnswerAndMove(currentQuestionIndex - 1);
         }
     });
     
     document.getElementById('next-btn').addEventListener('click', () => {
         if (currentQuestionIndex < totalQuestions - 1) {
-            loadQuestion(currentQuestionIndex + 1);
+            saveCurrentAnswerAndMove(currentQuestionIndex + 1);
         }
     });
     

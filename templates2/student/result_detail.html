@@ -35,11 +35,13 @@
                                 <div class="row">
                                     <div class="col-6">
                                         <strong>Subject:</strong><br>
+                                        <strong>Class:</strong><br>
                                         <strong>Duration:</strong><br>
                                         <strong>Completed:</strong>
                                     </div>
                                     <div class="col-6">
                                         {{ exam_session.exam.subject.name }}<br>
+                                        {{ exam_session.student.student_class or 'N/A' }}<br>
                                         {{ exam_session.exam.duration }} minutes<br>
                                         {{ exam_session.end_time.strftime('%Y-%m-%d %H:%M') }}
                                     </div>
@@ -50,6 +52,9 @@
                 </div>
 
                 <h5 class="mb-3">Question-wise Performance</h5>
+                {% if is_admin %}
+                <form id="theory-grade-form" method="POST" action="{{ url_for('admin_grade_theory', session_id=exam_session.id) }}">
+                {% endif %}
                 <div class="table-responsive">
                     <table class="table table-striped">
                         <thead>
@@ -67,6 +72,32 @@
                             <tr>
                                 <td>{{ loop.index }}</td>
                                 <td>{{ item.question.question_text[:100] }}{% if item.question.question_text|length > 100 %}...{% endif %}</td>
+                                {% if item.question.is_theory %}
+                                <td>
+                                    {% if item.text_response %}
+                                        <div style="white-space: pre-wrap;">{{ item.text_response }}</div>
+                                    {% else %}
+                                        <span class="text-muted">Not answered</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="text-muted">Theory response</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-warning">Manual</span>
+                                </td>
+                                <td>
+                                    {% if is_admin %}
+                                        <select name="marks_{{ item.answer_id }}" class="form-select form-select-sm">
+                                            {% for p in range(0, item.question.marks + 1) %}
+                                                <option value="{{ p }}" {% if p == item.marks_obtained %}selected{% endif %}>{{ p }} / {{ item.question.marks }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    {% else %}
+                                        <span class="text-info">{{ item.marks_obtained }} / {{ item.question.marks }}</span>
+                                    {% endif %}
+                                </td>
+                                {% else %}
                                 <td>
                                     {% if item.selected_answer %}
                                         <span class="{% if item.selected_answer != item.question.correct_answer %}text-danger{% endif %}">
@@ -93,11 +124,18 @@
                                         <span class="text-danger">0/{{ item.question.marks }}</span>
                                     {% endif %}
                                 </td>
+                                {% endif %}
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                {% if is_admin %}
+                <div class="mb-3">
+                    <button type="submit" form="theory-grade-form" class="btn btn-success">Save Theory Marks</button>
+                </div>
+                </form>
+                {% endif %}
 
                 <div class="d-flex justify-content-between mt-4">
                     <a href="{{ url_for('student_results') }}" class="btn btn-secondary">

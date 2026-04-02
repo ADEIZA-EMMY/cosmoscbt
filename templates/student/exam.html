@@ -225,12 +225,19 @@ function renderQuestion(question) {
                 ${question.image_url ? `<div class="mb-3 text-center"><img src="${question.image_url}" alt="Question image" style="max-width:100%;max-height:360px;object-fit:contain;" /></div>` : ''}
                 <div class="card mb-4"><div class="card-body"><p class="card-text">${question.text}</p></div></div>
                 <h6>Your answer (long-form):</h6>
-                <textarea id="theory-answer" class="form-control" rows="8"></textarea>
+                <textarea id="theory-answer" class="form-control" rows="8">${question.text_response ? question.text_response.replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''}</textarea>
             </div>
         `;
-        document.getElementById('theory-answer').addEventListener('blur', () => {
-            saveAnswer(document.getElementById('theory-answer').value);
+        const theoryField = document.getElementById('theory-answer');
+        if (!theoryField) return;
+        let theorySaveTimer = null;
+
+        const saveTheory = () => saveAnswer(theoryField.value);
+        theoryField.addEventListener('input', () => {
+            if (theorySaveTimer) clearTimeout(theorySaveTimer);
+            theorySaveTimer = setTimeout(saveTheory, 500);
         });
+        theoryField.addEventListener('blur', saveTheory);
         return;
     }
     
@@ -340,16 +347,41 @@ document.addEventListener('DOMContentLoaded', function() {
     const preModalEl = new bootstrap.Modal(document.getElementById('preStartModal'));
     preModalEl.show();
 
+    function persistCurrentAnswer() {
+        const theoryElem = document.getElementById('theory-answer');
+        if (theoryElem) {
+            saveAnswer(theoryElem.value);
+            return;
+        }
+
+        const selectedOption = document.querySelector('input[name="answer"]:checked');
+        if (selectedOption) {
+            saveAnswer(selectedOption.value);
+            return;
+        }
+
+        // no selection yet
+        saveAnswer(null);
+    }
+
+    function moveToQuestion(targetIndex) {
+        if (targetIndex < 0 || targetIndex >= totalQuestions) {
+            return;
+        }
+        persistCurrentAnswer();
+        setTimeout(() => { loadQuestion(targetIndex); }, 250);
+    }
+
     // Set up navigation
     document.getElementById('prev-btn').addEventListener('click', () => {
         if (currentQuestionIndex > 0) {
-            loadQuestion(currentQuestionIndex - 1);
+            moveToQuestion(currentQuestionIndex - 1);
         }
     });
     
     document.getElementById('next-btn').addEventListener('click', () => {
         if (currentQuestionIndex < totalQuestions - 1) {
-            loadQuestion(currentQuestionIndex + 1);
+            moveToQuestion(currentQuestionIndex + 1);
         }
     });
     

@@ -11,43 +11,48 @@
     </div>
     <div class="card-body">
         {% if exam_sessions %}
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Student</th>
-                        <th>Exam</th>
-                        <th>Subject</th>
-                        <th>Score</th>
-                        <th>Duration</th>
-                        <th>Completed</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for session in exam_sessions %}
-                    <tr>
-                        <td>{{ session.student.full_name }}</td>
-                        <td>{{ session.exam.title }}</td>
-                        <td>{{ session.exam.subject.name }}</td>
-                        <td>
-                            <strong>{{ session.score }}/{{ session.exam.total_marks }}</strong>
-                            ({{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%)
-                        </td>
-                        <td>
-                            {% if session.end_time %}
-                                {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} mins
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
-                        <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
-                        <td>
-                            <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#resultModal{{ session.id }}">
-                                <i class="fas fa-chart-bar"></i> Details
-                            </button>
-                        </td>
-                    </tr>
+        <form method="POST" action="{{ url_for('admin_results') }}">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>Student</th>
+                            <th>Class</th>
+                            <th>Exam</th>
+                            <th>Subject</th>
+                            <th>Score</th>
+                            <th>Duration</th>
+                            <th>Completed</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for session in exam_sessions %}
+                        <tr>
+                            <td><input type="checkbox" name="selected_sessions" value="{{ session.id }}"></td>
+                            <td>{{ session.student.full_name }}</td>
+                            <td>{{ session.student.student_class or 'N/A' }}</td>
+                            <td>{{ session.exam.title }}</td>
+                            <td>{{ session.exam.subject.name }}</td>
+                            <td>
+                                <strong>{{ session.score }}/{{ session.exam.total_marks }}</strong>
+                                ({{ "%.1f"|format((session.score/session.exam.total_marks)*100) }}%)
+                            </td>
+                            <td>
+                                {% if session.end_time %}
+                                    {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} mins
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#resultModal{{ session.id }}">
+                                    <i class="fas fa-chart-bar"></i> Details
+                                </button>
+                            </td>
+                        </tr>
 
                     <!-- Result Modal -->
                     <div class="modal fade" id="resultModal{{ session.id }}" tabindex="-1">
@@ -140,7 +145,12 @@
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
+            </div>
+            <div class="mt-3">
+                <button type="submit" name="action" value="delete_selected" class="btn btn-danger">Delete Selected</button>
+                <button type="submit" name="action" value="delete_all" class="btn btn-danger">Delete All</button>
+            </div>
+        </form>
         {% else %}
         <div class="text-center py-4">
             <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
@@ -149,4 +159,12 @@
         {% endif %}
     </div>
 </div>
+<script>
+document.getElementById('selectAll').addEventListener('change', function() {
+    var checkboxes = document.querySelectorAll('input[name="selected_sessions"]');
+    checkboxes.forEach(function(checkbox) {
+        checkbox.checked = this.checked;
+    }, this);
+});
+</script>
 {% endblock %}

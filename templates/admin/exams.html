@@ -12,19 +12,23 @@
 	  {% endif %}
 	{% endwith %}
 
-	<div class="mb-2">
+	<div class="mb-2 d-flex gap-2 flex-wrap">
 		<a href="{{ url_for('add_exam') }}" class="btn btn-primary">Create New Exam</a>
+		<form method="post" action="{{ url_for('admin_delete_all_exams') }}" onsubmit="return confirm('Delete ALL exams and their sessions?');" style="display:inline;">
+			<button type="submit" class="btn btn-danger">Delete All Exams</button>
+		</form>
 	</div>
 
-	<table class="table table-striped">
+	<form id="bulk-delete-exams" method="post" action="{{ url_for('admin_delete_selected_exams') }}" onsubmit="return confirm('Delete selected exams and their sessions?');">
+		<input type="hidden" name="ids" id="bulk-exam-ids" value="">
+		<table class="table table-striped">
 		<thead>
 			<tr>
 				<th><input type="checkbox" id="select_all_exams"></th>
 				<th>Title</th>
 				<th>Code</th>
 				<th>Subject</th>
-				<th>Class</th>
-				{% if session.get('is_superadmin') %}<th>School</th>{% endif %}
+				<th>Class</th>			<th>Record</th>				{% if session.get('is_superadmin') %}<th>School</th>{% endif %}
 				<th>Duration</th>
 				<th>Actions</th>
 			</tr>
@@ -36,8 +40,7 @@
 				<td>{{ exam.title }}</td>
 				<td>{{ exam.code or '—' }}</td>
 				<td>{{ exam.subject.name }}</td>
-				<td>{{ exam.subject_class or exam.subject.subject_class or '—' }}</td>
-				{% if session.get('is_superadmin') %}
+				<td>{{ exam.subject_class or exam.subject.subject_class or '—' }}</td>			<td>{{ 'Yes' if exam.record_session else 'No' }}</td>				{% if session.get('is_superadmin') %}
 					{% if exam.school %}
 					<td>{{ exam.school.name }}</td>
 					{% else %}
@@ -56,10 +59,9 @@
 		{% endfor %}
 		</tbody>
 	</table>
-
-	<form id="bulk-delete-exams" method="post" action="{{ url_for('admin_delete_selected_exams') }}" onsubmit="return confirm('Delete selected exams and their sessions?');">
-		<input type="hidden" name="ids" id="bulk-exam-ids">
+	<div class="mt-2">
 		<button type="submit" class="btn btn-danger" id="bulk-delete-exams-btn" disabled>Delete Selected</button>
+	</div>
 	</form>
 
 	<script>

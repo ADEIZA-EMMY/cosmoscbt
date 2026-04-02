@@ -585,6 +585,8 @@ class Exam(db.Model):
     # Link to a specific question set (if exam was created from uploaded questions)
     question_set_id = db.Column(db.Integer, db.ForeignKey('question_set.id'), nullable=True)
     question_set = db.relationship('QuestionSet', backref='exams_using_set')
+    # Whether to record the CBT session
+    record_session = db.Column(db.Boolean, default=False)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Optional cover/diagram image for the exam
@@ -611,6 +613,7 @@ class Answer(db.Model):
     is_correct = db.Column(db.Boolean)
     # For theory/essay questions store the free-text response here
     text_response = db.Column(db.Text, nullable=True)
+    marks_obtained = db.Column(db.Integer, nullable=True)
 
 
 class ExamAccessCode(db.Model):
@@ -1271,9 +1274,18 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        # School selection (multi-tenant)
+        # School selection/search (multi-tenant)
         school_id = request.form.get('school_id', '').strip()
+        school_name = request.form.get('school_name', '').strip()
         school_code = request.form.get('school_code')
+
+        if not school_id and school_name:
+            try:
+                school = School.query.filter(func.lower(School.name) == school_name.lower()).first()
+                if school:
+                    school_id = str(school.id)
+            except Exception:
+                school_id = ''
         
         user = User.query.filter_by(username=username).first()
         
@@ -5142,11 +5154,41 @@ def allowed_file(filename):
     allowed = {'xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'webm', 'mp4', 'mkv', 'mov'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
 
-@app.route('/admin/exams')
+@app.route('/admin/exams', methods=['GET', 'POST'])
 def admin_exams():
     if 'user_id' not in session or session['role'] != 'admin':
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'delete_selected':
+            selected_exams = request.form.getlist('selected_exams')
+            if selected_exams:
+                try:
+                    for exam_id in selected_exams:
+                        exam = Exam.query.get(int(exam_id))
+                        if exam:
+                            db.session.delete(exam)
+                    db.session.commit()
+                    flash(f'Deleted {len(selected_exams)} exam(s)', 'success')
+                except Exception as e:
+                    db.session.rollback()
+                    flash('Error deleting exams', 'danger')
+            else:
+                flash('No exams selected', 'warning')
+        elif action == 'delete_all':
+            try:
+                exams = exams_for_current_user()
+                count = len(exams)
+                for exam in exams:
+                    db.session.delete(exam)
+                db.session.commit()
+                flash(f'Deleted all {count} exam(s)', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash('Error deleting all exams', 'danger')
+        return redirect(url_for('admin_exams'))
     
     exams = exams_for_current_user()
     return render_template('admin/exams.html', exams=exams)
@@ -5638,7 +5680,13 @@ def admin_delete_selected_exams():
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
 
-    ids_raw = request.form.get('ids', '')
+    ids_raw = request.form.get('ids', '').strip()
+    if not ids_raw:
+        # fallback to checkbox list if available
+        selected_ids = request.form.getlist('selected_exams')
+        if selected_ids:
+            ids_raw = ','.join([str(x).strip() for x in selected_ids if str(x).strip()])
+
     if not ids_raw:
         flash('No exams selected', 'warning')
         return redirect(url_for('admin_exams'))
@@ -5692,16 +5740,39 @@ def admin_delete_selected_exams():
                 db.session.rollback()
             except Exception:
                 pass
-        if 'attachment' not in cols:
-            try:
-                from sqlalchemy import text
-                db.session.execute(text("ALTER TABLE community_post ADD COLUMN attachment VARCHAR(400) DEFAULT NULL"))
-                db.session.commit()
-            except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
+    try:
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+    flash(f'Deleted {deleted} exam(s)', 'success')
+    return redirect(url_for('admin_exams'))
+
+@app.route('/admin/exams/delete_all', methods=['POST'])
+def admin_delete_all_exams():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    exams = exams_for_current_user()
+    deleted = 0
+    for exam in exams:
+        try:
+            # delete related exam sessions and answers
+            sessions = ExamSession.query.filter_by(exam_id=exam.id).all()
+            for s in sessions:
+                Answer.query.filter_by(exam_session_id=s.id).delete()
+                db.session.delete(s)
+
+            ExamAccessCode.query.filter_by(exam_id=exam.id).delete()
+            db.session.delete(exam)
+            deleted += 1
+        except Exception:
+            db.session.rollback()
+            continue
 
     try:
         db.session.commit()
@@ -5766,6 +5837,9 @@ def add_exam():
             qset_id_int = int(qset_id) if qset_id else None
         except Exception:
             qset_id_int = None
+
+        # Get record session option
+        record_session = request.form.get('record_session') == 'on'
 
         # CRITICAL: Ensure exam table has all required columns before proceeding
         try:
@@ -5842,6 +5916,7 @@ def add_exam():
             code=generate_unique_exam_code(),
             total_marks=total_marks,
             question_set_id=qset_id_int,
+            record_session=record_session,
             created_by=session['user_id']
         )
         
@@ -5965,11 +6040,46 @@ def add_exam():
         schools=schools
     )
 
-@app.route('/admin/results')
+@app.route('/admin/results', methods=['GET', 'POST'])
 def admin_results():
     if 'user_id' not in session or session['role'] != 'admin':
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'delete_selected':
+            selected_sessions = request.form.getlist('selected_sessions')
+            if selected_sessions:
+                try:
+                    for session_id in selected_sessions:
+                        session = ExamSession.query.get(int(session_id))
+                        if session:
+                            db.session.delete(session)
+                    db.session.commit()
+                    flash(f'Deleted {len(selected_sessions)} result(s)', 'success')
+                except Exception as e:
+                    db.session.rollback()
+                    flash('Error deleting results', 'danger')
+            else:
+                flash('No results selected', 'warning')
+        elif action == 'delete_all':
+            try:
+                # Get the same query as GET
+                query = ExamSession.query.filter_by(status='completed')
+                if not session.get('is_superadmin'):
+                    cur_sid = _get_effective_school_id()
+                    query = query.join(User, ExamSession.student_id == User.id).filter(User.school_id == cur_sid)
+                sessions = query.all()
+                count = len(sessions)
+                for s in sessions:
+                    db.session.delete(s)
+                db.session.commit()
+                flash(f'Deleted all {count} result(s)', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash('Error deleting all results', 'danger')
+        return redirect(url_for('admin_results'))
     
     # Get filter parameters
     subject_id = request.args.get('subject_id')
@@ -6044,6 +6154,99 @@ def admin_results():
         answers_by_session = {}
 
     return render_template('admin/results.html', exam_sessions=exam_sessions, subjects=subjects, answers_by_session=answers_by_session, available_classes=available_classes, selected_subject_id=subject_id, selected_class=selected_class)
+
+
+@app.route('/admin/results/delete_selected', methods=['POST'])
+def admin_delete_selected_results():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    ids_raw = request.form.get('ids', '').strip()
+    if not ids_raw:
+        selected_ids = request.form.getlist('selected_results') or request.form.getlist('result_ids')
+        if selected_ids:
+            ids_raw = ','.join([str(x).strip() for x in selected_ids if str(x).strip()])
+
+    if not ids_raw:
+        flash('No results selected', 'warning')
+        return redirect(url_for('admin_results'))
+
+    try:
+        ids = [int(x) for x in ids_raw.split(',') if x.strip()]
+    except Exception:
+        flash('Invalid selection format', 'danger')
+        return redirect(url_for('admin_results'))
+
+    deleted = 0
+    for session_id in ids:
+        try:
+            exam_session = ExamSession.query.get(session_id)
+            if not exam_session:
+                continue
+            # restrict to same school unless superadmin
+            if not session.get('is_superadmin'):
+                admin_school = _get_effective_school_id()
+                student_school = getattr(exam_session.student, 'school_id', None) if exam_session.student else None
+                if admin_school and student_school and int(admin_school) != int(student_school):
+                    continue
+
+            Answer.query.filter_by(exam_session_id=session_id).delete()
+            db.session.delete(exam_session)
+            deleted += 1
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
+    try:
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+    flash(f'Deleted {deleted} result(s)', 'success')
+    return redirect(url_for('admin_results'))
+
+
+@app.route('/admin/results/delete_all', methods=['POST'])
+def admin_delete_all_results():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    sessions = ExamSession.query.filter_by(status='completed').all()
+    deleted = 0
+    for exam_session in sessions:
+        try:
+            if not session.get('is_superadmin'):
+                admin_school = _get_effective_school_id()
+                student_school = getattr(exam_session.student, 'school_id', None) if exam_session.student else None
+                if admin_school and student_school and int(admin_school) != int(student_school):
+                    continue
+
+            Answer.query.filter_by(exam_session_id=exam_session.id).delete()
+            db.session.delete(exam_session)
+            deleted += 1
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
+    try:
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+    flash(f'Deleted {deleted} result(s)', 'success')
+    return redirect(url_for('admin_results'))
 
 
 @app.route('/admin/results/export_subject', methods=['POST'])
@@ -6271,10 +6474,12 @@ def admin_view_result(session_id):
     for answer in answers:
         question = Question.query.get(answer.question_id)
         questions.append({
+            'answer_id': answer.id,
             'question': question,
             'selected_answer': answer.selected_answer,
             'is_correct': answer.is_correct,
-            'text_response': getattr(answer, 'text_response', None)
+            'text_response': getattr(answer, 'text_response', None),
+            'marks_obtained': getattr(answer, 'marks_obtained', None) or 0
         })
 
     # Compute time used
@@ -6293,7 +6498,66 @@ def admin_view_result(session_id):
     except Exception:
         time_used_str = 'N/A'
 
-    return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str)
+    return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str, is_admin=True)
+
+
+@app.route('/admin/session/<int:session_id>/grade_theory', methods=['POST'])
+def admin_grade_theory(session_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    exam_session = ExamSession.query.get_or_404(session_id)
+
+    try:
+        for answer in Answer.query.filter_by(exam_session_id=session_id).all():
+            question = Question.query.get(answer.question_id)
+            if not question or not getattr(question, 'is_theory', False):
+                continue
+            field_name = f'marks_{answer.id}'
+            value = request.form.get(field_name)
+            try:
+                score = int(value) if value is not None else 0
+            except Exception:
+                score = 0
+            score = max(0, min(score, int(question.marks or 0)))
+            # Attach marks_obtained field to answer for persistence (or create value in temporary data)
+            try:
+                answer.marks_obtained = score
+            except Exception:
+                pass
+
+        db.session.commit()
+    except Exception as e:
+        app.logger.error(f'Error grading theory answers: {e}')
+        db.session.rollback()
+        flash('Could not save theory grades, please try again.', 'danger')
+        return redirect(url_for('admin_view_result', session_id=session_id))
+
+    # Recompute the overall score upon theory grading
+    total_score = 0
+    for a in Answer.query.filter_by(exam_session_id=session_id).all():
+        q = Question.query.get(a.question_id)
+        if not q:
+            continue
+        if getattr(q, 'is_theory', False):
+            total_score += int(getattr(a, 'marks_obtained', 0) or 0)
+        else:
+            if a.is_correct:
+                try:
+                    total_score += int(q.marks or 1)
+                except Exception:
+                    total_score += 1
+
+    exam_session.score = total_score
+    try:
+        db.session.commit()
+        flash('Theory grades saved and score updated.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('Could not update score after grading theory answers.', 'danger')
+
+    return redirect(url_for('admin_view_result', session_id=session_id))
 
 
 @app.route('/admin/result/<int:session_id>/pdf', methods=['GET', 'POST'])
@@ -6334,7 +6598,7 @@ def admin_result_pdf(session_id):
         rendered = render_template('student/result_detail.html', exam_session=exam_session, questions=questions, pdf_mode=True, time_used=time_used_str)
         return rendered
     except Exception:
-        return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str)
+        return render_template('student/result_detail.html', exam_session=exam_session, questions=questions, time_used=time_used_str, is_admin=False)
 
 # Student Routes
 @app.route('/student/dashboard')
@@ -7340,7 +7604,7 @@ if __name__ == '__main__':
     except Exception:
         pass
 
-        # Ensure Answer table has text_response column for storing theory answers
+        # Ensure Answer table has text_response and marks_obtained columns for storing theory answers
         try:
             try:
                 res = db.session.execute("PRAGMA table_info('answer')").fetchall()
@@ -7351,6 +7615,15 @@ if __name__ == '__main__':
                 try:
                     db.engine.execute("ALTER TABLE answer ADD COLUMN text_response TEXT")
                     print('Added answer.text_response column at startup')
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+            if cols is None or 'marks_obtained' not in cols:
+                try:
+                    db.engine.execute("ALTER TABLE answer ADD COLUMN marks_obtained INTEGER")
+                    print('Added answer.marks_obtained column at startup')
                 except Exception:
                     try:
                         db.session.rollback()

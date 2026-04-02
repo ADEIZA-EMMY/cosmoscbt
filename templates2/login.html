@@ -17,6 +17,17 @@
                         <label for="password" class="form-label">Password</label>
                         <input type="password" class="form-control" id="password" name="password" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="school_name" class="form-label">School</label>
+                        <input list="school_list" class="form-control" id="school_name" name="school_name" placeholder="Start typing school name to find it">
+                        <datalist id="school_list">
+                            {% for school in schools %}
+                            <option value="{{ school.name }}" data-id="{{ school.id }}"></option>
+                            {% endfor %}
+                        </datalist>
+                        <input type="hidden" id="school_id" name="school_id">
+                        <div class="form-text">Choose your school by typing and selecting from the list.</div>
+                    </div>
                     <button type="submit" class="btn btn-primary w-100">Login</button>
                 </form>
                 <div class="text-center mt-3">
@@ -29,4 +40,17 @@
         </div>
     </div>
 </div>
+<script>
+const schoolOptions = Array.from(document.querySelectorAll('#school_list option'));
+const schoolNameInput = document.getElementById('school_name');
+const schoolIdInput = document.getElementById('school_id');
+
+if (schoolNameInput) {
+    schoolNameInput.addEventListener('input', () => {
+        const value = schoolNameInput.value.trim();
+        const match = schoolOptions.find(o => o.value === value);
+        schoolIdInput.value = match ? match.dataset.id : '';
+    });
+}
+</script>
 {% endblock %}

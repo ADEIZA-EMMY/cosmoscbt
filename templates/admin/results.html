@@ -45,11 +45,24 @@
     </div>
     <div class="card-body">
         {% if exam_sessions %}
+        <div class="d-flex justify-content-between mb-3">
+            <div>
+                <button id="select-all-results" type="button" class="btn btn-sm btn-outline-primary me-2">Select All</button>
+                <button id="delete-selected-results" type="button" class="btn btn-sm btn-danger">Delete Selected</button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_delete_all_results') }}" style="margin:0;">
+                <button type="submit" class="btn btn-sm btn-danger">Delete All Results</button>
+            </form>
+        </div>
+        <form id="results-action-form" method="POST" action="{{ url_for('admin_delete_selected_results') }}">
+            <input type="hidden" name="ids" id="selected-result-ids" value="">
         <div class="table-responsive">
             <table class="table table-striped">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="check-all-results"></th>
                         <th>Student</th>
+                        <th>Class</th>
                         <th>Exam</th>
                         <th>Subject</th>
                         <th>Score</th>
@@ -61,7 +74,9 @@
                 <tbody>
                     {% for session in exam_sessions %}
                     <tr>
+                        <td><input type="checkbox" name="selected_results" class="result-checkbox" value="{{ session.id }}"></td>
                         <td>{{ session.student.full_name }}</td>
+                        <td>{{ session.student.student_class or 'N/A' }}</td>
                         <td>{{ session.exam.title }}</td>
                         <td>{{ session.exam.subject.name }}</td>
                         <td>
@@ -224,6 +239,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </form>
         </div>
         {% else %}
         <div class="text-center py-4">
@@ -233,4 +249,39 @@
         {% endif %}
     </div>
 </div>
+<script>
+function updateResultSelectionInput() {
+    const selected = Array.from(document.querySelectorAll('.result-checkbox:checked')).map(cb => cb.value);
+    document.getElementById('selected-result-ids').value = selected.join(',');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const checkAll = document.getElementById('check-all-results');
+    const resultCheckboxes = Array.from(document.querySelectorAll('.result-checkbox'));
+
+    checkAll?.addEventListener('change', (e) => {
+        resultCheckboxes.forEach(cb => cb.checked = e.target.checked);
+        updateResultSelectionInput();
+    });
+
+    resultCheckboxes.forEach(cb => cb.addEventListener('change', updateResultSelectionInput));
+
+    document.getElementById('select-all-results').addEventListener('click', () => {
+        resultCheckboxes.forEach(cb => cb.checked = true);
+        checkAll.checked = true;
+        updateResultSelectionInput();
+    });
+
+    document.getElementById('delete-selected-results').addEventListener('click', () => {
+        updateResultSelectionInput();
+        if (!document.getElementById('selected-result-ids').value) {
+            alert('Please select at least one result to delete.');
+            return;
+        }
+        if (confirm('Delete selected results? This cannot be undone.')) {
+            document.getElementById('results-action-form').submit();
+        }
+    });
+});
+</script>
 {% endblock %}
