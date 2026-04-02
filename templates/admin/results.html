@@ -48,7 +48,8 @@
         <div class="d-flex justify-content-between mb-3">
             <div>
                 <button id="select-all-results" type="button" class="btn btn-sm btn-outline-primary me-2">Select All</button>
-                <button id="delete-selected-results" type="button" class="btn btn-sm btn-danger">Delete Selected</button>
+                <button id="delete-selected-results" type="button" class="btn btn-sm btn-danger me-2">Delete Selected</button>
+                <a href="{{ url_for('admin_theory_mark') }}" class="btn btn-sm btn-warning">Mark Theory Exams</a>
             </div>
             <form method="POST" action="{{ url_for('admin_delete_all_results') }}" style="margin:0;">
                 <button type="submit" class="btn btn-sm btn-danger">Delete All Results</button>
@@ -67,6 +68,7 @@
                         <th>Subject</th>
                         <th>Score</th>
                         <th>Duration</th>
+                        <th>Status</th>
                         <th>Completed</th>
                         <th>Actions</th>
                     </tr>
@@ -88,17 +90,27 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if session.status == 'pending_review' %}
+                                <span class="badge bg-warning">Pending Review</span>
+                            {% elif session.status == 'completed' %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ session.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             {% if session.end_time %}
                                 {{ ((session.end_time - session.start_time).total_seconds() / 60)|round|int }} mins
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
-                        <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') if session.end_time else 'N/A' }}</td>
                         <td>
-                            <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#resultModal{{ session.id }}">
-                                <i class="fas fa-chart-bar"></i> Details
-                            </button>
+                            {% if session.status == 'pending_review' %}
+                                <a href="{{ url_for('admin_mark_theory', session_id=session.id) }}" class="btn btn-sm btn-warning me-1">Mark Theory</a>
+                            {% endif %}
+                            <a href="{{ url_for('admin_view_result', session_id=session.id) }}" class="btn btn-sm btn-info">View Details</a>
                         </td>
                     </tr>
 

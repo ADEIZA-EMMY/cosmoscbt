@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Grade Theory Answers</h2>
+    <a href="{{ url_for('admin_theory_mark') }}" class="btn btn-secondary">Back to Pending Theory</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="mb-3">
+            <strong>Student:</strong> {{ exam_session.student.full_name or exam_session.student.username }}<br>
+            <strong>Exam:</strong> {{ exam_session.exam.title }}<br>
+            <strong>Subject:</strong> {{ exam_session.exam.subject.name }}<br>
+            <strong>Submitted:</strong> {{ exam_session.end_time.strftime('%Y-%m-%d %H:%M') if exam_session.end_time else 'N/A' }}
+        </div>
+
+        <form method="post" action="{{ url_for('admin_grade_theory', session_id=exam_session.id) }}">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th>Question</th>
+                        <th>Student Response</th>
+                        <th width="20%">Awarded Marks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in theory_answers %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ item.question.question_text }}</td>
+                        <td><pre style="white-space: pre-wrap; word-break: break-word;">{{ item.answer.text_response or '(no response)' }}</pre></td>
+                        <td>
+                            <select name="marks_{{ item.answer.id }}" class="form-select form-select-sm">
+                                {% for i in range(0, item.max_mark + 1) %}
+                                    <option value="{{ i }}" {% if i == item.marks_obtained %}selected{% endif %}>{{ i }} / {{ item.max_mark }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-success">Save Marks & Publish Result</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

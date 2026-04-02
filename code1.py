@@ -6113,8 +6113,8 @@ def admin_results():
     selected_class = request.args.get('selected_class')
     
     try:
-        # Fetch all completed exam sessions - simple, direct approach
-        query = ExamSession.query.filter_by(status='completed')
+        # Fetch all completed and pending-review exam sessions (for theory marking)
+        query = ExamSession.query.filter(ExamSession.status.in_(['completed', 'pending_review']))
         
         # If non-superadmin, filter by school after fetching
         if not session.get('is_superadmin'):
@@ -6181,6 +6181,22 @@ def admin_results():
         answers_by_session = {}
 
     return render_template('admin/results.html', exam_sessions=exam_sessions, subjects=subjects, answers_by_session=answers_by_session, available_classes=available_classes, selected_subject_id=subject_id, selected_class=selected_class)
+
+
+@app.route('/admin/theory_mark', methods=['GET'])
+def admin_theory_mark():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    query = ExamSession.query.filter(ExamSession.status == 'pending_review')
+    if not session.get('is_superadmin'):
+        cur_sid = _get_effective_school_id()
+        query = query.join(User, ExamSession.student_id == User.id).filter(User.school_id == cur_sid)
+
+    sessions = query.order_by(ExamSession.end_time.desc()).all()
+
+    return render_template('admin/theory_mark_overview.html', exam_sessions=sessions)
 
 
 @app.route('/admin/results/delete_selected', methods=['POST'])
@@ -6468,6 +6484,41 @@ def admin_print_theory(session_id):
 
 
 # Admin view for individual exam session results (page)
+@app.route('/admin/session/<int:session_id>/mark_theory', methods=['GET'])
+def admin_mark_theory(session_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'danger')
+        return redirect(url_for('login'))
+
+    exam_session = ExamSession.query.get_or_404(session_id)
+    try:
+        if not session.get('is_superadmin'):
+            admin_school = _get_effective_school_id()
+            student_school = getattr(exam_session.student, 'school_id', None) if exam_session.student else None
+            if admin_school and student_school and int(admin_school) != int(student_school):
+                flash('Access denied to that exam session', 'danger')
+                return redirect(url_for('admin_results'))
+    except Exception:
+        pass
+
+    theory_answers = []
+    for answer in Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all():
+        q = Question.query.get(answer.question_id)
+        if q and getattr(q, 'is_theory', False):
+            theory_answers.append({
+                'answer': answer,
+                'question': q,
+                'max_mark': int(getattr(q, 'marks', 0) or 0),
+                'marks_obtained': int(getattr(answer, 'marks_obtained', 0) or 0)
+            })
+
+    if not theory_answers:
+        flash('No theory questions found for this exam session.', 'info')
+        return redirect(url_for('admin_view_result', session_id=session_id))
+
+    return render_template('admin/mark_theory.html', exam_session=exam_session, theory_answers=theory_answers)
+
+
 @app.route('/admin/result/<int:session_id>', methods=['GET', 'POST'])
 def admin_view_result(session_id):
     if 'user_id' not in session or session.get('role') != 'admin':
@@ -6577,6 +6628,10 @@ def admin_grade_theory(session_id):
                     total_score += 1
 
     exam_session.score = total_score
+    # Mark pending theory sessions as completed after grades were assigned
+    if exam_session.status == 'pending_review':
+        exam_session.status = 'completed'
+
     try:
         db.session.commit()
         flash('Theory grades saved and score updated.', 'success')
@@ -7259,8 +7314,8 @@ def take_exam(exam_id):
         app.logger.debug('created %d answers for session %d', len(questions), exam_session.id)
         return render_template('student/exam.html', exam=exam, session_id=exam_session.id)
 
-    except Exception:
-        app.logger.exception('unexpected error in take_exam for exam_id %r', exam_id)
+    except Exception as exc:
+        app.logger.exception('unexpected error in take_exam for exam_id %r: %s', exam_id, exc)
         flash('An error occurred while starting the exam. Please contact the administrator.', 'danger')
         return redirect(url_for('student_dashboard'))
 
@@ -7449,7 +7504,16 @@ def submit_exam(session_id):
     # Update exam session
     exam_session.end_time = datetime.utcnow()
     exam_session.score = total_score
-    exam_session.status = 'completed'
+
+    # If exam includes theory questions, set pending_review so admin can grade manually.
+    has_theory = False
+    for a in answers:
+        q = Question.query.get(a.question_id)
+        if q and getattr(q, 'is_theory', False):
+            has_theory = True
+            break
+
+    exam_session.status = 'pending_review' if has_theory else 'completed'
 
     db.session.commit()
 
@@ -7477,9 +7541,9 @@ def student_results():
         flash('Access denied', 'danger')
         return redirect(url_for('login'))
     
-    exam_sessions = ExamSession.query.filter_by(
-        student_id=session['user_id'], 
-        status='completed'
+    exam_sessions = ExamSession.query.filter(
+        ExamSession.student_id==session['user_id'], 
+        ExamSession.status.in_(['completed', 'pending_review'])
     ).all()
     
     return render_template('student/results.html', exam_sessions=exam_sessions)

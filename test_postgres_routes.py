@@ -335,20 +335,21 @@ def test_student_school_and_exam_access():
         admin.school_id = school.id
         db.session.add(admin)
         db.session.commit()
+        admin_id = admin.id
         # create a subject and exam restricted to class "Alpha"
-        subj = Subject(name='Demo Subj', created_by=admin.id, school_id=school.id, subject_class='Alpha')
+        subj = Subject(name='Demo Subj', created_by=admin_id, school_id=school.id, subject_class='Alpha')
         db.session.add(subj)
         db.session.commit()
         exam = Exam(subject_id=subj.id, title='Alpha Exam', duration=15,
                     subject_class='Alpha', allowed_classes='Alpha', is_active=True,
-                    code='ALPHA1', total_marks=50, created_by=admin.id,
+                    code='ALPHA1', total_marks=50, created_by=admin_id,
                     school_id=school.id)
         db.session.add(exam)
         db.session.commit()
 
     # simulate admin session and add a student via POST
     with client.session_transaction() as sess:
-        sess['user_id'] = admin.id
+        sess['user_id'] = admin_id
         sess['role'] = 'admin'
     resp = client.get('/admin/student/add')
     assert resp.status_code == 200
