@@ -128,6 +128,14 @@ with app.app_context():
                         print('Added is_active to exam table')
                     except Exception as e:
                         print(f'Failed to add is_active: {e}')
+                
+                # Add record_session if missing
+                if 'record_session' not in ecols:
+                    try:
+                        _exec_ddl("ALTER TABLE exam ADD COLUMN record_session BOOLEAN DEFAULT false")
+                        print('Added record_session to exam table')
+                    except Exception as e:
+                        print(f'Failed to add record_session: {e}')
             
             print('Database migrations completed successfully')
         except Exception as e:
