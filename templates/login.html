@@ -167,21 +167,14 @@
         <form method="POST">
             <div class="form-group">
                 <label for="school_search">Search School</label>
-                <input id="school_search" type="text" class="form-control" placeholder="Type school name to filter..." autocomplete="off">
+                <input id="school_search" type="text" class="form-control" placeholder="Type school name..." list="schools-list" autocomplete="off">
+                <datalist id="schools-list">
+                    {% for s in schools %}
+                        <option value="{{ s.name }}" data-id="{{ s.id }}">
+                    {% endfor %}
+                </datalist>
             </div>
-            <div class="form-group">
-                <label for="school_id">School (optional for superadmin)</label>
-                <select id="school_id" name="school_id" {% if not schools %}disabled{% endif %}>
-                    {% if schools %}
-                        <option value="">-- Select School --</option>
-                        {% for s in schools %}
-                            <option value="{{ s.id }}">{{ s.name }}</option>
-                        {% endfor %}
-                    {% else %}
-                        <option value="">No schools configured</option>
-                    {% endif %}
-                </select>
-            </div>
+            <input type="hidden" id="school_id" name="school_id" value="">
             <!-- role selection removed: backend determines role from account -->
 
             <div class="form-group">
@@ -269,39 +262,27 @@
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         const schoolSearch = document.getElementById('school_search');
-        const schoolSelect = document.getElementById('school_id');
-        if (!schoolSearch || !schoolSelect) return;
+        const schoolIdHidden = document.getElementById('school_id');
+        const schoolsList = document.getElementById('schools-list');
+        if (!schoolSearch || !schoolIdHidden || !schoolsList) return;
 
-        const initialOptions = Array.from(schoolSelect.options).map(opt => ({ value: opt.value, text: opt.text }));
-
-        schoolSearch.addEventListener('input', function() {
-            const query = this.value.trim().toLowerCase();
-            schoolSelect.innerHTML = '';
-
-            const defaultOption = initialOptions.find(opt => opt.value === '');
-            if (defaultOption) {
-                const optionEl = document.createElement('option');
-                optionEl.value = '';
-                optionEl.text = defaultOption.text;
-                schoolSelect.appendChild(optionEl);
-            }
-
-            const filtered = initialOptions.filter(opt => opt.value && opt.text.toLowerCase().includes(query));
-            if (filtered.length === 0 && query) {
-                const noOpt = document.createElement('option');
-                noOpt.disabled = true;
-                noOpt.selected = true;
-                noOpt.text = 'No schools match your search.';
-                schoolSelect.appendChild(noOpt);
-            } else {
-                filtered.forEach(opt => {
-                    const optionEl = document.createElement('option');
-                    optionEl.value = opt.value;
-                    optionEl.text = opt.text;
-                    schoolSelect.appendChild(optionEl);
-                });
-            }
+        // Create a map of school names to ids
+        const schoolMap = {};
+        Array.from(schoolsList.options).forEach(option => {
+            schoolMap[option.value] = option.getAttribute('data-id');
         });
+
+        function updateSchoolId() {
+            const query = schoolSearch.value.trim();
+            if (schoolMap[query]) {
+                schoolIdHidden.value = schoolMap[query];
+            } else {
+                schoolIdHidden.value = '';
+            }
+        }
+
+        schoolSearch.addEventListener('input', updateSchoolId);
+        schoolSearch.addEventListener('change', updateSchoolId);
     });
     </script>
 </body>
