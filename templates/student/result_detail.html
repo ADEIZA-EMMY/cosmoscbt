@@ -80,16 +80,24 @@
                                 <td>{{ loop.index }}</td>
                                 <td>{{ item.question.question_text[:100] }}{% if item.question.question_text|length > 100 %}...{% endif %}</td>
                                 <td>
-                                    {% if item.selected_answer %}
-                                        <span class="{% if item.selected_answer != item.question.correct_answer %}text-danger{% endif %}">
-                                            {{ item.selected_answer }}
-                                        </span>
+                                    {% if item.is_theory %}
+                                        <pre style="white-space: pre-wrap; word-break: break-word;">{{ item.text_response or '(no response)' }}</pre>
                                     {% else %}
-                                        <span class="text-muted">Not answered</span>
+                                        {% if item.selected_answer %}
+                                            <span class="{% if item.selected_answer != item.question.correct_answer %}text-danger{% endif %}">
+                                                {{ item.selected_answer }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">Not answered</span>
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <span class="text-success">{{ item.question.correct_answer }}</span>
+                                    {% if item.is_theory %}
+                                        <span class="text-muted">Theory</span>
+                                    {% else %}
+                                        <span class="text-success">{{ item.question.correct_answer }}</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if item.is_correct %}
@@ -99,10 +107,18 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if item.is_correct %}
-                                        <span class="text-success">+{{ item.question.marks }}</span>
+                                    {% if item.is_theory %}
+                                        {% if item.is_correct %}
+                                            <span class="text-success">{{ item.marks_obtained }}/{{ item.max_marks }}</span>
+                                        {% else %}
+                                            <span class="text-danger">{{ item.marks_obtained }}/{{ item.max_marks }}</span>
+                                        {% endif %}
                                     {% else %}
-                                        <span class="text-danger">0/{{ item.question.marks }}</span>
+                                        {% if item.is_correct %}
+                                            <span class="text-success">+{{ item.question.marks }}</span>
+                                        {% else %}
+                                            <span class="text-danger">0/{{ item.question.marks }}</span>
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                             </tr>
