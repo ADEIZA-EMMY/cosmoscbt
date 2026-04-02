@@ -6783,14 +6783,35 @@ def start_exam():
         db.session.commit()
 
     random.shuffle(questions)
-    exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
-    db.session.add(exam_session)
-    db.session.commit()
-
-    for q in questions:
-        a = Answer(exam_session_id=exam_session.id, question_id=q.id, selected_answer=None, is_correct=None)
-        db.session.add(a)
-    db.session.commit()
+    try:
+        exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
+        db.session.add(exam_session)
+        db.session.flush()  # Flush to get the session ID without committing
+        session_id = exam_session.id
+        
+        app.logger.info(f"Created exam_session: {session_id} for exam: {exam.id}, student: {student.id}")
+        
+        # Create Answer records for each question
+        answers_to_add = []
+        for q in questions:
+            a = Answer(
+                exam_session_id=session_id, 
+                question_id=q.id, 
+                selected_answer=None, 
+                is_correct=None,
+                text_response=None,
+                marks_obtained=None
+            )
+            answers_to_add.append(a)
+            db.session.add(a)
+        
+        db.session.commit()
+        app.logger.info(f"Created {len(answers_to_add)} Answer records for session: {session_id}")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error creating exam session or answers: {str(e)}")
+        flash(f'Error starting exam: {str(e)}', 'danger')
+        return redirect(url_for('start'))
 
     # Temporarily log the student in for the duration of the exam only
     session['user_id'] = student.id
@@ -6851,14 +6872,35 @@ def start_begin():
         return redirect(url_for('start'))
 
     random.shuffle(questions)
-    exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
-    db.session.add(exam_session)
-    db.session.commit()
-
-    for q in questions:
-        a = Answer(exam_session_id=exam_session.id, question_id=q.id, selected_answer=None, is_correct=None)
-        db.session.add(a)
-    db.session.commit()
+    try:
+        exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
+        db.session.add(exam_session)
+        db.session.flush()  # Flush to get the session ID without committing
+        session_id = exam_session.id
+        
+        app.logger.info(f"Created exam_session (start_begin): {session_id} for exam: {exam.id}, student: {student.id}")
+        
+        # Create Answer records for each question
+        answers_to_add = []
+        for q in questions:
+            a = Answer(
+                exam_session_id=session_id, 
+                question_id=q.id, 
+                selected_answer=None, 
+                is_correct=None,
+                text_response=None,
+                marks_obtained=None
+            )
+            answers_to_add.append(a)
+            db.session.add(a)
+        
+        db.session.commit()
+        app.logger.info(f"Created {len(answers_to_add)} Answer records for session: {session_id}")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error creating exam session or answers (start_begin): {str(e)}")
+        flash(f'Error starting exam: {str(e)}', 'danger')
+        return redirect(url_for('start'))
 
     session['user_id'] = student.id
     session['role'] = 'student'
@@ -6950,14 +6992,35 @@ def start_quick():
         db.session.commit()
 
     random.shuffle(questions)
-    exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
-    db.session.add(exam_session)
-    db.session.commit()
-
-    for q in questions:
-        a = Answer(exam_session_id=exam_session.id, question_id=q.id, selected_answer=None, is_correct=None)
-        db.session.add(a)
-    db.session.commit()
+    try:
+        exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
+        db.session.add(exam_session)
+        db.session.flush()  # Flush to get the session ID without committing
+        session_id = exam_session.id
+        
+        app.logger.info(f"Created exam_session (start_quick): {session_id} for exam: {exam.id}, student: {student.id}")
+        
+        # Create Answer records for each question
+        answers_to_add = []
+        for q in questions:
+            a = Answer(
+                exam_session_id=session_id, 
+                question_id=q.id, 
+                selected_answer=None, 
+                is_correct=None,
+                text_response=None,
+                marks_obtained=None
+            )
+            answers_to_add.append(a)
+            db.session.add(a)
+        
+        db.session.commit()
+        app.logger.info(f"Created {len(answers_to_add)} Answer records for session: {session_id}")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error creating exam session or answers (start_quick): {str(e)}")
+        flash(f'Error starting exam: {str(e)}', 'danger')
+        return redirect(url_for('start_quick'))
 
     # session-based temporary login for exam
     session['user_id'] = student.id
@@ -7010,14 +7073,35 @@ def start_quick_begin():
         db.session.commit()
 
     random.shuffle(questions)
-    exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
-    db.session.add(exam_session)
-    db.session.commit()
-
-    for q in questions:
-        a = Answer(exam_session_id=exam_session.id, question_id=q.id, selected_answer=None, is_correct=None)
-        db.session.add(a)
-    db.session.commit()
+    try:
+        exam_session = ExamSession(exam_id=exam.id, student_id=student.id, start_time=datetime.utcnow(), status='in_progress')
+        db.session.add(exam_session)
+        db.session.flush()  # Flush to get the session ID without committing
+        session_id = exam_session.id
+        
+        app.logger.info(f"Created exam_session (start_quick_begin): {session_id} for exam: {exam.id}, student: {student.id}")
+        
+        # Create Answer records for each question
+        answers_to_add = []
+        for q in questions:
+            a = Answer(
+                exam_session_id=session_id, 
+                question_id=q.id, 
+                selected_answer=None, 
+                is_correct=None,
+                text_response=None,
+                marks_obtained=None
+            )
+            answers_to_add.append(a)
+            db.session.add(a)
+        
+        db.session.commit()
+        app.logger.info(f"Created {len(answers_to_add)} Answer records for session: {session_id}")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error creating exam session or answers (start_quick_begin): {str(e)}")
+        flash(f'Error starting exam: {str(e)}', 'danger')
+        return redirect(url_for('start_quick'))
 
     # session-based temporary login for exam
     session['user_id'] = student.id
@@ -7166,60 +7250,66 @@ def get_question(session_id, question_index):
     if 'user_id' not in session:
         return {'error': 'Unauthorized'}, 401
     
-    exam_session = ExamSession.query.get_or_404(session_id)
-    
-    if exam_session.student_id != session['user_id']:
-        return {'error': 'Access denied'}, 403
-    
-    # Get all answers for this session
-    answers = Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all()
-    
-    app.logger.debug(f"get_question: session_id={session_id}, question_index={question_index}, total_answers={len(answers)}")
-    
-    if len(answers) == 0:
-        print(f"ERROR: No answers found for session {session_id}")
-        return {'error': 'No questions available for this exam session'}, 400
-    
-    if question_index < 0 or question_index >= len(answers):
-        return {'error': 'Invalid question index'}, 404
-    
-    answer = answers[question_index]
-    question = Question.query.get(answer.question_id)
-    
-    if not question:
-        print(f"ERROR: Question {answer.question_id} not found in database")
-        return {'error': 'Question data corrupted'}, 500
-    
-    # Prepare options
-    options = []
-    if question.option_a: options.append({'letter': 'A', 'text': question.option_a})
-    if question.option_b: options.append({'letter': 'B', 'text': question.option_b})
-    if question.option_c: options.append({'letter': 'C', 'text': question.option_c})
-    if question.option_d: options.append({'letter': 'D', 'text': question.option_d})
-    if question.option_e: options.append({'letter': 'E', 'text': question.option_e})
-    
-    # Build image URL if question has an attached image (stored relative to uploads root)
-    image_url = None
     try:
-        if getattr(question, 'question_image', None):
-            image_url = url_for('serve_uploads', filename=question.question_image)
-    except Exception:
+        exam_session = ExamSession.query.get_or_404(session_id)
+        
+        if exam_session.student_id != session['user_id']:
+            return {'error': 'Access denied'}, 403
+        
+        # Get all answers for this session
+        answers = Answer.query.filter_by(exam_session_id=session_id).order_by(Answer.id).all()
+        
+        app.logger.debug(f"get_question: session_id={session_id}, question_index={question_index}, total_answers={len(answers)}")
+        
+        if len(answers) == 0:
+            app.logger.error(f"ERROR: No answers found for session {session_id}")
+            return {'error': 'No questions available for this exam session. Please contact your administrator if this persists.'}, 400
+        
+        if question_index < 0 or question_index >= len(answers):
+            app.logger.warning(f"Invalid question_index: {question_index}, total_answers: {len(answers)}")
+            return {'error': 'Invalid question index'}, 404
+        
+        answer = answers[question_index]
+        question = Question.query.get(answer.question_id)
+        
+        if not question:
+            app.logger.error(f"ERROR: Question {answer.question_id} not found in database")
+            return {'error': 'Question data corrupted or deleted'}, 500
+        
+        # Prepare options
+        options = []
+        if question.option_a: options.append({'letter': 'A', 'text': question.option_a})
+        if question.option_b: options.append({'letter': 'B', 'text': question.option_b})
+        if question.option_c: options.append({'letter': 'C', 'text': question.option_c})
+        if question.option_d: options.append({'letter': 'D', 'text': question.option_d})
+        if question.option_e: options.append({'letter': 'E', 'text': question.option_e})
+        
+        # Build image URL if question has an attached image (stored relative to uploads root)
         image_url = None
+        try:
+            if getattr(question, 'question_image', None):
+                image_url = url_for('serve_uploads', filename=question.question_image)
+        except Exception as e:
+            app.logger.warning(f"Error getting image URL: {str(e)}")
+            image_url = None
 
-    return {
-        'question_index': question_index,
-        'total_questions': len(answers),
-        'question': {
-            'id': question.id,
-            'text': question.question_text,
-            'options': options,
-            'selected_answer': answer.selected_answer,
-            'text_response': getattr(answer, 'text_response', None),
-            'marks': question.marks,
-            'is_theory': bool(getattr(question, 'is_theory', False)),
-            'image_url': image_url
+        return {
+            'question_index': question_index,
+            'total_questions': len(answers),
+            'question': {
+                'id': question.id,
+                'text': question.question_text,
+                'options': options,
+                'selected_answer': answer.selected_answer,
+                'text_response': getattr(answer, 'text_response', None),
+                'marks': question.marks,
+                'is_theory': bool(getattr(question, 'is_theory', False)),
+                'image_url': image_url
+            }
         }
-    }
+    except Exception as e:
+        app.logger.error(f"Unexpected error in get_question: {str(e)}", exc_info=True)
+        return {'error': f'Server error: {str(e)}'}, 500
 
 @app.route('/api/exam/<int:session_id>/answer', methods=['POST'])
 def save_answer(session_id):
@@ -7614,27 +7704,20 @@ if __name__ == '__main__':
 
         # Ensure Answer table has text_response and marks_obtained columns for storing theory answers
         try:
-            try:
-                res = db.session.execute("PRAGMA table_info('answer')").fetchall()
-                cols = [r[1] for r in res]
-            except Exception:
-                cols = None
-            if cols is None or 'text_response' not in cols:
-                try:
-                    db.engine.execute("ALTER TABLE answer ADD COLUMN text_response TEXT")
-                    print('Added answer.text_response column at startup')
-                except Exception:
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            if 'answer' in inspector.get_table_names():
+                acols = [c['name'] for c in inspector.get_columns('answer')]
+                if 'text_response' not in acols:
                     try:
-                        db.session.rollback()
+                        db.engine.execute("ALTER TABLE answer ADD COLUMN text_response TEXT")
+                        print('Added answer.text_response column at startup')
                     except Exception:
                         pass
-            if cols is None or 'marks_obtained' not in cols:
-                try:
-                    db.engine.execute("ALTER TABLE answer ADD COLUMN marks_obtained INTEGER")
-                    print('Added answer.marks_obtained column at startup')
-                except Exception:
+                if 'marks_obtained' not in acols:
                     try:
-                        db.session.rollback()
+                        db.engine.execute("ALTER TABLE answer ADD COLUMN marks_obtained INTEGER")
+                        print('Added answer.marks_obtained column at startup')
                     except Exception:
                         pass
         except Exception:
