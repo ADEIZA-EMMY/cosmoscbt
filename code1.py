@@ -81,6 +81,19 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 db = SQLAlchemy(app)
 
+# Helper to execute raw DDL in a SQLAlchemy-2-compatible way
+def _exec_ddl(sql):
+    try:
+        conn = db.engine.connect()
+        try:
+            # exec_driver_sql works across dialects and doesn't require Text() wrapper
+            conn.exec_driver_sql(sql)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print('DDL exec failed:', sql, e)
+
 # generic 500 error handler logs traceback and shows user-friendly page
 @app.errorhandler(500)
 def internal_error(e):
@@ -100,49 +113,67 @@ with app.app_context():
         # Add missing columns directly (avoid nested app contexts)
         try:
             from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            db_dialect = db.engine.dialect.name
             
-            # Check and add exam table columns
-            if 'exam' in inspect(db.engine).get_table_names():
-                ecols = [c['name'] for c in inspect(db.engine).get_columns('exam')]
-                
-                # Add school_id if missing
-                if 'school_id' not in ecols:
+            # Helper to add column to both SQLite and PostgreSQL
+            def add_column_if_missing(table_name, col_name, col_def):
+                columns = [c['name'] for c in inspector.get_columns(table_name)]
+                if col_name not in columns:
                     try:
-                        _exec_ddl("ALTER TABLE exam ADD COLUMN school_id INTEGER")
-                        print('Added school_id to exam table')
+                        if db_dialect == 'sqlite':
+                            # SQLite: Simpler ALTER TABLE syntax
+                            sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"
+                        else:
+                            # PostgreSQL: Type conversion for compatibility
+                            sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"
+                        _exec_ddl(sql)
+                        print(f'Added {col_name} to {table_name} table')
+                        return True
                     except Exception as e:
-                        print(f'Failed to add school_id: {e}')
-                
-                # Add school_code if missing
-                if 'school_code' not in ecols:
-                    try:
-                        _exec_ddl("ALTER TABLE exam ADD COLUMN school_code VARCHAR(50)")
-                        print('Added school_code to exam table')
-                    except Exception as e:
-                        print(f'Failed to add school_code: {e}')
-                
-                # Add is_active if missing
-                if 'is_active' not in ecols:
-                    try:
-                        _exec_ddl("ALTER TABLE exam ADD COLUMN is_active BOOLEAN DEFAULT true")
-                        print('Added is_active to exam table')
-                    except Exception as e:
-                        print(f'Failed to add is_active: {e}')
-                
-                # Add record_session if missing
-                if 'record_session' not in ecols:
-                    try:
-                        _exec_ddl("ALTER TABLE exam ADD COLUMN record_session BOOLEAN DEFAULT false")
-                        print('Added record_session to exam table')
-                    except Exception as e:
-                        print(f'Failed to add record_session: {e}')
+                        print(f'Note: {col_name} may already exist or failed to add: {e}')
+                        return False
+                return False
+            
+            table_names = inspector.get_table_names()
+            
+            # Add missing exam columns
+            if 'exam' in table_names:
+                add_column_if_missing('exam', 'school_id', 'INTEGER')
+                add_column_if_missing('exam', 'school_code', 'VARCHAR(50)')
+                add_column_if_missing('exam', 'is_active', 'BOOLEAN DEFAULT 1')
+                add_column_if_missing('exam', 'record_session', 'BOOLEAN DEFAULT 0')
+                add_column_if_missing('exam', 'question_set_id', 'INTEGER')
+                add_column_if_missing('exam', 'exam_image', 'VARCHAR(300)')
+                add_column_if_missing('answer', 'marks_obtained', 'INTEGER')
+            
+            # Add missing subject columns
+            if 'subject' in table_names:
+                add_column_if_missing('subject', 'school_id', 'INTEGER')
+            
+            # Add missing question columns
+            if 'question' in table_names:
+                add_column_if_missing('question', 'question_set_id', 'INTEGER')
+            
+            # Add missing user columns
+            if 'user' in table_names:
+                add_column_if_missing('user', 'school_id', 'INTEGER')
+            
+            # Add missing answer columns
+            if 'answer' in table_names:
+                add_column_if_missing('answer', 'text_response', 'TEXT')
+                add_column_if_missing('answer', 'marks_obtained', 'INTEGER')
             
             print('Database migrations completed successfully')
         except Exception as e:
             print(f'Error running migrations: {e}')
+            import traceback
+            traceback.print_exc()
             
     except Exception as e:
         print('Failed to create tables or run migrations:', e)
+        import traceback
+        traceback.print_exc()
 
 # Ensure DB tables exist when the web process first receives a request.
 # This runs inside the web dyno so created tables are visible to that process.
@@ -231,18 +262,6 @@ def _process_and_save_image_bytes(data_bytes, filename_base):
     # store path relative to the uploads root and normalize to forward-slashes
     rel = os.path.relpath(target, app.config['UPLOAD_FOLDER'])
     return rel.replace('\\', '/')
-
-# Helper to execute raw DDL in a SQLAlchemy-2-compatible way
-def _exec_ddl(sql):
-    try:
-        conn = db.engine.connect()
-        try:
-            # exec_driver_sql works across dialects and doesn't require Text() wrapper
-            conn.exec_driver_sql(sql)
-        finally:
-            conn.close()
-    except Exception as e:
-        print('DDL exec failed:', sql, e)
 
 # Database Models
 class User(db.Model):
