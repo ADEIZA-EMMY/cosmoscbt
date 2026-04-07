@@ -70,7 +70,6 @@
                                 <th>Question</th>
                                 <th>Your Answer</th>
                                 <th>Correct Answer</th>
-                                <th>Status</th>
                                 <th>Marks</th>
                             </tr>
                         </thead>
@@ -80,43 +79,18 @@
                                 <td>{{ loop.index }}</td>
                                 <td>{{ item.question.question_text[:100] }}{% if item.question.question_text|length > 100 %}...{% endif %}</td>
                                 <td>
-                                    {% if item.is_theory %}
-                                        {% if item.text_response %}
-                                            <span class="text-muted"><pre style="white-space: pre-wrap; word-break: break-word; max-width: 300px;">{{ item.text_response }}</pre></span>
-                                        {% else %}
-                                            <span class="text-muted">Not answered</span>
-                                        {% endif %}
-                                    {% else %}
-                                        {% if item.selected_answer %}
-                                            <span class="{% if item.selected_answer != item.question.correct_answer %}text-danger{% endif %}">
-                                                {{ item.selected_answer }}
-                                            </span>
-                                        {% else %}
-                                            <span class="text-muted">Not answered</span>
-                                        {% endif %}
-                                    {% endif %}
+                                    <button type="button" class="btn btn-sm btn-outline-primary view-answer-btn" data-bs-toggle="modal" data-bs-target="#viewAnswerModal"
+                                        data-title="Your Answer"
+                                        data-content="{% if item.is_theory %}{% if item.text_response %}{{ item.text_response|e }}{% else %}Not answered{% endif %}{% else %}{% if item.selected_answer %}{{ item.selected_answer|e }}{% else %}Not answered{% endif %}{% endif %}">
+                                        View
+                                    </button>
                                 </td>
                                 <td>
-                                    {% if item.is_theory %}
-                                        <span class="text-muted">N/A (Theory)</span>
-                                    {% else %}
-                                        <span class="text-success">{{ item.question.correct_answer }}</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if item.is_theory %}
-                                        {% if item.is_correct %}
-                                            <span class="badge bg-success">Correct</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">Incorrect</span>
-                                        {% endif %}
-                                    {% else %}
-                                        {% if item.is_correct %}
-                                            <span class="badge bg-success">Correct</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">Incorrect</span>
-                                        {% endif %}
-                                    {% endif %}
+                                    <button type="button" class="btn btn-sm btn-outline-primary view-answer-btn" data-bs-toggle="modal" data-bs-target="#viewAnswerModal"
+                                        data-title="Correct Answer"
+                                        data-content="{% if item.is_theory %}No fixed correct answer for theory questions.{% else %}{{ item.question.correct_answer|e }}{% endif %}">
+                                        View
+                                    </button>
                                 </td>
                                 <td>
                                     {% if item.is_theory %}
@@ -138,6 +112,40 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="modal fade" id="viewAnswerModal" tabindex="-1" aria-labelledby="viewAnswerModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="viewAnswerModalLabel">Answer Detail</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <pre id="viewAnswerModalBody" class="mb-0" style="white-space: pre-wrap; word-break: break-word;"></pre>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function () {
+                        var answerModal = document.getElementById('viewAnswerModal');
+                        var answerModalTitle = document.getElementById('viewAnswerModalLabel');
+                        var answerModalBody = document.getElementById('viewAnswerModalBody');
+
+                        if (answerModal) {
+                            answerModal.addEventListener('show.bs.modal', function (event) {
+                                var button = event.relatedTarget;
+                                if (!button) return;
+                                var title = button.getAttribute('data-title') || 'Detail';
+                                var content = button.getAttribute('data-content') || 'No details available.';
+                                answerModalTitle.textContent = title;
+                                answerModalBody.textContent = content;
+                            });
+                        }
+                    });
+                </script>
 
                 <div class="d-flex justify-content-between mt-4">
                     {% if not pdf_mode %}
